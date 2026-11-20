@@ -1,1 +1,21 @@
-ewogICJsb2NrZmlsZVZlcnNpb24iOiAyLAogICJjb25maWdWZXJzaW9uIjogMSwKICAid29ya3NwYWNlcyI6IHsKICAgICIiOiB7CiAgICAgICJuYW1lIjogInJlYWNoZXItYXBpIiwKICAgICAgImRldkRlcGVuZGVuY2llcyI6IHsKICAgICAgICAiQHR5cGVzL2J1biI6ICIxLjQuMiIsCiAgICAgIH0sCiAgICB9LAogIH0sCiAgInBhY2thZ2VzIjogewogICAgIkB0eXBlcy9idW4iOiBbIkB0eXBlcy9idW5AMS40LjIiLCAiIiwgeyAiZGVwZW5kZW5jaWVzIjogeyAiYnVuLXR5cGVzIjogIjEuNC4yIiB9IH0sICJzaGE1MTItR2ltb3RObjcrWlYwdVZBckl0QmJyaVpzUjFvTmYwK1dUelBrZGNGcnpTaEk3azJub3JMMHV6RWFKVDhUMzNkV3I3Ty9jOVpEdUFGUXJjdEtDaTcyb1E9PSJdLAoKICAgICJAdHlwZXMvbm9kZSI6IFsiQHR5cGVzL25vZGVAMjYuNi42IiwgIiIsIHsgImRlcGVuZGVuY2llcyI6IHsgInVuZGljaS10eXBlcyI6ICJ+OC45LjAiIH0gfSwgInNoYTUxMi1NelFqKzhLeDNYSTQwT21VQUU2UW9oNThaTU5zdE5OTXduMm5mZDNxV3NmZTduRE5TcUpOemVzNG5qaHo2QUh3clNIT2ZmU0x3WFU2eWI0NzRRNGFvZz09Il0sCgogICAgImJ1bi10eXBlcyI6IFsiYnVuLXR5cGVzQDEuNC4yIiwgIiIsIHsgImRlcGVuZGVuY2llcyI6IHsgIkB0eXBlcy9ub2RlIjogIioiIH0gfSwgInNoYTUxMi1ieFYxRmdLN3lCSXpqUmU1ekJveklNNEJlbTExWkpjQ1hTcmpXUkczWVdMdDh5RkRlUHU0Y0xqcGViTzhPdlBlSUU5dHJieVBGNGZ1ajNDaWE0Rmozdz09Il0sCgogICAgInVuZGljaS10eXBlcyI6IFsidW5kaWNpLXR5cGVzQDguOS4wIiwgIiIsIHt9LCAic2hhNTEyLUtURHlSVFlYOHNXbUtYQWlrUEhIU3ljNjNDUlBFVE1jdHlqS0Z1cGNDNk9CTFhUM3hzTjBlOWFGN20rbUlYdXRGV3BVWHVlZHRvd0c3aUxPenAwa1FnPT0iXSwKICB9Cn0K
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "reacher-api",
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+      },
+    },
+  },
+  "packages": {
+    "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@types/node": ["@types/node@26.6.6", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog=="],
+
+    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
+  }
+}
