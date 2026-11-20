@@ -9,7 +9,7 @@ This repo is the **public deployment** of ReacheR, ported from the private Muse 
 | `frontend/` | React app (Join, Discover, Profiles, Messages, Rooms, Projects, Communities, Feed, Network, Admin, Docs) | GitHub Pages — https://moocho954-afk.github.io/reacher/ |
 | `server/` | Standalone Bun + SQLite REST API (a faithful port of all 46 Space actions) | Render free web service (see below) |
 
-> **Honest status, read first:** the GitHub Pages front end is public and renders on its own. **The backend is not deployed yet** — until the Render deploy below runs, the page shows a "Backend not deployed yet" banner and registration / messaging / discovery do nothing (they fail with a clear message, never with fake data). Nothing has been purchased; no domain is claimed.
+> **Honest status, read first (updated 2026-11-20):** the backend is **LIVE** — Render service `reacher-api` at https://reacher-api-874c.onrender.com, `/api/v1/health` reports all six services healthy, and the GitHub Pages front end points at it. Registration / messaging / discovery work against the live API. Free-tier note still applies: SQLite is ephemeral, so this is a demo-grade deploy — data does not survive a restart/redeploy. Nothing has been purchased; no domain is claimed.
 
 ## 1. Go live in two steps
 
@@ -22,11 +22,11 @@ Pushing to `main` runs `.github/workflows/deploy-pages.yml`, which builds `front
 1. Open https://github.com/moocho954-afk/reacher/settings/pages
 2. Under **Build and deployment → Source**, choose **GitHub Actions**.
 3. Re-run the workflow (Actions tab → "Deploy frontend to GitHub Pages" → Run workflow), or push any commit to `main`.
-4. Open https://moocho954-afk.github.io/reacher/ — the app loads with the "Backend not deployed yet" banner.
+4. Open https://moocho954-afk.github.io/reacher/ — the app loads connected to the live backend.
 
 ### Step B — Backend (Render, one-click Blueprint)
 
-1. Create a free account at https://render.com (no card required for the free tier) — **do not create this on anyone's behalf without their say-so; nothing here creates an account for you**.
+1. Create a free account at https://render.com — **note, learned live 2026-11-20: Render now demands a card on file before a Blueprint can be created** (temporary $1 authorization, free plan stays $0). **Do not create this on anyone's behalf without their say-so; nothing here creates an account for you.**
 2. In Render: **New → Blueprint** → connect this repo → **Apply**. Render reads `render.yaml` and creates the `reacher-api` web service.
 3. Render generates `ADMIN_TOKEN` for you (keep it secret — it is the Bearer token for the admin endpoints). Set `PUBLIC_URL` to the service URL Render assigns (e.g. `https://reacher-api.onrender.com`).
 4. Wait for the deploy to go green, then check `https://<your-service>.onrender.com/api/v1/health` — all six services should report `healthy`.
