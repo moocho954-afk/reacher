@@ -1,1 +1,41 @@
-Ly8gU3RhbmRhbG9uZSBjbGllbnQgYnVuZGxlciBmb3IgdGhlIHB1YmxpYyBSZWFjaGVSIGZyb250IGVuZC4KLy8gTWlycm9ycyB0aGUgU3BhY2UgU0RLJ3MgQnVuLmJ1aWxkIGNvbmZpZ3VyYXRpb24gKHByb2R1Y3Rpb24gUmVhY3QgYnVuZGxlLAovLyBUYWlsd2luZCBwbHVnaW4sIGhhc2hlZCBhc3NldCBuYW1lcykgd2l0aG91dCBhbnkgU3BhY2UgcnVudGltZSBkZXBlbmRlbmN5LgovLwovLyBCdWlsZC10aW1lIGVudjoKLy8gICBSRUFDSEVSX0FQSV9VUkwg4oCUIGJha2VkIGludG8gdGhlIGJ1bmRsZSBhcyB0aGUgZGVmYXVsdCBBUEkgYmFzZSBVUkwuCi8vICAgICBMZWF2ZSB1bnNldCBmb3IgYSBmcm9udC1lbmQtb25seSBQYWdlcyBkZXBsb3k7IHRoZSBwYWdlIHRoZW4gc2hvd3MgdGhlCi8vICAgICAiYmFja2VuZCBub3QgZGVwbG95ZWQgeWV0IiBzdGF0ZSBhbmQgYHdpbmRvdy5fX1JFQUNIRVJfQVBJX19gIGNhbiBzdGlsbAovLyAgICAgcG9pbnQgaXQgYXQgYSBiYWNrZW5kIGF0IHJ1bnRpbWUgd2l0aG91dCByZWJ1aWxkaW5nLgovLwovLyBPdXRwdXQ6IC4vZGlzdC8gKHNlcnZlZCBieSBHaXRIdWIgUGFnZXMpLgppbXBvcnQgeyBybSB9IGZyb20gIm5vZGU6ZnMvcHJvbWlzZXMiOwppbXBvcnQgdGFpbHdpbmRQbHVnaW4gZnJvbSAiYnVuLXBsdWdpbi10YWlsd2luZCI7Cgpjb25zdCBPVVRESVIgPSAiLi9kaXN0IjsKCmF3YWl0IHJtKE9VVERJUiwgeyBmb3JjZTogdHJ1ZSwgcmVjdXJzaXZlOiB0cnVlIH0pOwoKY29uc3QgcmVzdWx0ID0gYXdhaXQgQnVuLmJ1aWxkKHsKICBlbnRyeXBvaW50czogWyIuL2luZGV4Lmh0bWwiXSwKICBvdXRkaXI6IE9VVERJUiwKICBtaW5pZnk6IHRydWUsCiAgZGVmaW5lOiB7CiAgICAicHJvY2Vzcy5lbnYuTk9ERV9FTlYiOiBKU09OLnN0cmluZ2lmeSgicHJvZHVjdGlvbiIpLAogICAgX19SRUFDSEVSX0FQSV9VUkxfXzogSlNPTi5zdHJpbmdpZnkocHJvY2Vzcy5lbnYuUkVBQ0hFUl9BUElfVVJMID8/ICIiKSwKICB9LAogIG5hbWluZzogewogICAgYXNzZXQ6ICJhc3NldHMvW25hbWVdLVtoYXNoXS5bZXh0XSIsCiAgICBjaHVuazogImFzc2V0cy9bbmFtZV0tW2hhc2hdLltleHRdIiwKICAgIGVudHJ5OiAiW25hbWVdLltleHRdIiwKICB9LAogIHBsdWdpbnM6IFt0YWlsd2luZFBsdWdpbl0sCn0pOwoKaWYgKCFyZXN1bHQuc3VjY2VzcykgewogIGZvciAoY29uc3QgbG9nIG9mIHJlc3VsdC5sb2dzKSBjb25zb2xlLmVycm9yKGxvZyk7CiAgdGhyb3cgbmV3IEVycm9yKCJmcm9udGVuZCBidWlsZCBmYWlsZWQ7IHNlZSBsb2dnZWQgZGlhZ25vc3RpY3MiKTsKfQoKY29uc29sZS5sb2coYGZyb250ZW5kIGJ1aWxkIE9LIC0+ICR7T1VURElSfS9gKTsKZm9yIChjb25zdCBvIG9mIHJlc3VsdC5vdXRwdXRzKSBjb25zb2xlLmxvZygiICIsIG8ucGF0aCk7Cg==
+// Standalone client bundler for the public ReacheR front end.
+// Mirrors the Space SDK's Bun.build configuration (production React bundle,
+// Tailwind plugin, hashed asset names) without any Space runtime dependency.
+//
+// Build-time env:
+//   REACHER_API_URL — baked into the bundle as the default API base URL.
+//     Leave unset for a front-end-only Pages deploy; the page then shows the
+//     "backend not deployed yet" state and `window.__REACHER_API__` can still
+//     point it at a backend at runtime without rebuilding.
+//
+// Output: ./dist/ (served by GitHub Pages).
+import { rm } from "node:fs/promises";
+import tailwindPlugin from "bun-plugin-tailwind";
+
+const OUTDIR = "./dist";
+
+await rm(OUTDIR, { force: true, recursive: true });
+
+const result = await Bun.build({
+  entrypoints: ["./index.html"],
+  outdir: OUTDIR,
+  minify: true,
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+    __REACHER_API_URL__: JSON.stringify(process.env.REACHER_API_URL ?? ""),
+  },
+  naming: {
+    asset: "assets/[name]-[hash].[ext]",
+    chunk: "assets/[name]-[hash].[ext]",
+    entry: "[name].[ext]",
+  },
+  plugins: [tailwindPlugin],
+});
+
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  throw new Error("frontend build failed; see logged diagnostics");
+}
+
+console.log(`frontend build OK -> ${OUTDIR}/`);
+for (const o of result.outputs) console.log(" ", o.path);
