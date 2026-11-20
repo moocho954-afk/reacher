@@ -1,1 +1,13 @@
-IyBSZWFjaGVSIEFQSSDigJQgc3RhbmRhbG9uZSBCdW4gc2VydmVyICh6ZXJvIG5wbSBkZXBlbmRlbmNpZXMpLgpGUk9NIG92ZW4vYnVuOjEuMy1zbGltCldPUktESVIgL2FwcApDT1BZIHNlcnZlci9wYWNrYWdlLmpzb24gc2VydmVyL3RzY29uZmlnLmpzb24gLi8KQ09QWSBzZXJ2ZXIvc3JjIC4vc3JjCiMgU1FMaXRlIGRhdGEgbGl2ZXMgaGVyZS4gT24gUmVuZGVyLCBtb3VudCB0aGUgcGVyc2lzdGVudCBkaXNrIGF0IC9kYXRhCiMgKFN0YXJ0ZXIgcGxhbiBhbmQgdXApIGFuZCBzZXQgREFUQUJBU0VfUEFUSD0vZGF0YS9yZWFjaGVyLmRiLgojIE9uIHRoZSBGcmVlIHBsYW4gdGhlcmUgaXMgbm8gZGlzazogZGF0YSBpcyBlcGhlbWVyYWwgKHNlZSBSRUFETUUpLgpSVU4gbWtkaXIgLXAgL2RhdGEKRU5WIFBPUlQ9MzAwMApFTlYgREFUQUJBU0VfUEFUSD0vZGF0YS9yZWFjaGVyLmRiCkVYUE9TRSAzMDAwCkNNRCBbImJ1biIsICJydW4iLCAic3JjL3NlcnZlci50cyJdCg==
+# ReacheR API — standalone Bun server (zero npm dependencies).
+FROM oven/bun:1.3-slim
+WORKDIR /app
+COPY server/package.json server/tsconfig.json ./
+COPY server/src ./src
+# SQLite data lives here. On Render, mount the persistent disk at /data
+# (Starter plan and up) and set DATABASE_PATH=/data/reacher.db.
+# On the Free plan there is no disk: data is ephemeral (see README).
+RUN mkdir -p /data
+ENV PORT=3000
+ENV DATABASE_PATH=/data/reacher.db
+EXPOSE 3000
+CMD ["bun", "run", "src/server.ts"]

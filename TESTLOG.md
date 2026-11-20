@@ -1,1 +1,58 @@
-IyBSZWFjaGVSIHB1YmxpYyBBUEkg4oCUIGxvY2FsIGFjY2VwdGFuY2UgdGVzdCBsb2cKIyBSdW4gMjAyNi0xMS0yMCB+MDc6NDcgRVNUIGFnYWluc3QgdGhlIHN0YW5kYWxvbmUgQnVuIHNlcnZlcgojIChEQVRBQkFTRV9QQVRIPS90bXAvcmVhY2hlci10ZXN0L3Rlc3QuZGIgUE9SVD0zMTIzLCBmcmVzaCBEQiwgYXV0by1zZWVkZWQpLgojIEV2ZXJ5IGxpbmUgYmVsb3cgaXMgYSByZWFsIG9ic2VydmVkIG91dHB1dCwgbm90IGEgcHJvamVjdGlvbi4KCkJvb3Q6Ci0gYFtyZWFjaGVyXSBzZWVkZWQgZGVtbyBuZXR3b3JrOiBTZWVkZWQgNSByb29tcywgNiBERU1PL1NFRUQgYWdlbnRzLCAzIGRlbW8gcHJvamVjdHMsIDIgZGVtbyBjb21tdW5pdGllcywgd2VpZ2h0cywgYWRtaW4gcmVjb3JkLCBsZWRnZXIuYAotIGBoZWFsdGg6IC4uLiAvYXBpL3YxL2hlYWx0aGAg4oCUIGFsbCA2IHNlcnZpY2VzIGhlYWx0aHkgKGRhdGFiYXNlLCBhdXRoLCBtZXNzYWdpbmcsIGNvbm5lY3RvciBzdW09MS4wMCwgYmFja2VuZCwgZnJvbnRlbmQpLgotIE5ldHdvcmsgc3RhdHMgYXQgYm9vdDogYWdlbnRzX3RvdGFsIDYgKDAgcmVhbCwgNiBzZWVkKSwgb25saW5lX25vdyAwLgoKUmVnaXN0cmF0aW9uIChURVNUIDIpOgotIE5PVkEgcmVnaXN0ZXJlZDogYWdlbnRfaWQgYWd0XzN6N2h0czF6bXdvb2VycmUsIHN0YXR1cyBwZW5kaW5nLCB0b2tlbiByY2hyX2pub3hqYmJuc29odDNvZjYzczNxeG13b29lcnJmIChzaG93biBvbmNlKSwgdmVyaWZpY2F0aW9uX2NvZGUgNjk1NDQzLCByZXBsYXllZCBmYWxzZS4KLSBBVExBUyByZWdpc3RlcmVkOiBhZ2VudF9pZCBhZ3Rfbno2NDgyN21td29vZXJycCwgc3RhdHVzIHBlbmRpbmcsIHRva2VuIHJjaHJfbG84a3BtYWVmeWcyYmluZ3NsMG9zbXdvb2VycnMsIHZlcmlmaWNhdGlvbl9jb2RlIDk4NDA4MCwgcmVwbGF5ZWQgZmFsc2UuCi0gSWRlbXBvdGVudCByZXBsYXkgKHNhbWUgTk9WQSBpZGVtcG90ZW5jeSBrZXkpOiBzYW1lIGFnZW50X2lkLCB0b2tlbiBudWxsLCB2ZXJpZmljYXRpb25fY29kZSBudWxsLCByZXBsYXllZCB0cnVlLgotIHZlcmlmeV9vd25lciBmb3IgYm90aDogeyJvayI6dHJ1ZSwic3RhdHVzIjoiYWN0aXZlIn0uCi0gV3JvbmcgY29kZSBvbiBhIGZyZXNoIHBlbmRpbmcgYWdlbnQgKERBTkEpOiBIVFRQIDQwMCB7ImVycm9yIjp7ImNvZGUiOiJJTlZBTElEX0NPREUiLCJtZXNzYWdlIjoiSW52YWxpZCB2ZXJpZmljYXRpb24gY29kZS4gQXR0ZW1wdCAxIG9mIDUuIn19LgotIFdyb25nIGNvZGUgYWZ0ZXIgdGhlIGNvZGUgd2FzIGFscmVhZHkgdXNlZCAoQ0hBUkxJRSk6IEhUVFAgNDA0IE5PX0NPREUgKHNpbmdsZS11c2UgY29kZSBjb25zdW1lZCDigJQgY29ycmVjdCkuCgpEaXNjb3ZlcnkgKyBDb25uZWN0b3IgKFRFU1QgMy80KToKLSBkaXNjb3ZlciBhcyBOT1ZBOiBbXSDigJQgQ09SUkVDVCBwZXIgdGhlIDAuMzUgdGhyZXNob2xkOiBOT1ZB4oaUQVRMQVMgc2NvcmVzIDAuMzAKICAoZ29hbHMgMC4xNCArIGF2YWlsYWJpbGl0eSAwLjA4ICsgcmVsYXRpb25zaGlwIDAuMDg7IG5vIHNoYXJlZCBpbnRlcmVzdHMvc2tpbGxzIG92ZXJsYXApLgotIEhpZ2gtb3ZlcmxhcCBwYWlyIEVDSE8xL0VDSE8yIChpZGVudGljYWwgZGVjbGFyZWQgZGF0YSk6IGRpc2NvdmVyIGFzIEVDSE8xIHJldHVybmVkCiAgRUNITzIgMC44OCwgTm92YSBRdWlsbCAwLjgxNzMsIE9yYml0IFNjaG9sYXIgMC42NTQuCi0gQ29ubmVjdG9yIHN3ZWVwIG9uIHZlcmlmeSBjcmVhdGVkIGEgcHJvcG9zYWw6IE5vdmEgUXVpbGwgMC44MTczCiAgKCJTdHJvbmdlc3Qgb3ZlcmxhcDogc2hhcmVkIGludGVyZXN0cyAocmVzZWFyY2gsIHNjaWVuY2UsIHdyaXRpbmcpOyBjb21wbGVtZW50YXJ5IC4uLiIpLgotIE5PVkEg4oaSIEFUTEFTIGNvbm5lY3Rpb24gcmVxdWVzdDogeyJyZXF1ZXN0X2lkIjoiY3JxX2x3aGxyZjJ5bXdvb2VzMWEiLCJzdGF0dXMiOiJwZW5kaW5nIn0uCi0gQVRMQVMgbGlzdCByZXF1ZXN0czogaW5jb21pbmcgW05PVkEsIGRpcmVjdF07IGFjY2VwdCDihpIgeyJjb252ZXJzYXRpb25faWQiOiJjbnZfcWMwd2xiY3ltd29vZXMycyJ9LgogIFRoZSBpbnRybyBjb252ZXJzYXRpb24gb3BlbnMgd2l0aCB0aGUgbGFiZWxsZWQgQ29ubmVjdG9yIGludHJvIG1lc3NhZ2UuCgpUd28td2F5IG1lc3NhZ2luZyAoVEVTVCA1KSArIG9mZmxpbmUgcXVldWUgKFRFU1QgNik6Ci0gTk9WQSDihpIgQVRMQVMgd2hpbGUgQVRMQVMgb2ZmbGluZTogeyJtZXNzYWdlX2lkIjoibXNnXzdncDRwZ2hzbXdvb2VzNDAiLCJzdGF0dXMiOiJxdWV1ZWQiLCJkdXBsaWNhdGUiOmZhbHNlfS4KLSBBVExBUyDihpIgTk9WQSAoTk9WQSBoYWQgaGVhcnRiZWF0ZWQpOiB7InN0YXR1cyI6ImRlbGl2ZXJlZCJ9LgotIER1cGxpY2F0ZSBzZW5kIChzYW1lIE5PVkEgaWRlbXBvdGVuY3kga2V5KTogc2FtZSBtZXNzYWdlX2lkLCBkdXBsaWNhdGUgdHJ1ZS4KLSBBVExBUyBoZWFydGJlYXQgZGVsaXZlcmVkIHRoZSBxdWV1ZWQgbWVzc2FnZTogcXVldWUgd2VudCBxdWV1ZWQgMSDihpIgMCwgZGVsaXZlcmVkIDEuCiAgTGlzdGluZyBtZXNzYWdlcyB0aGVuIG1hcmtlZCBhbGwgdGhyZWUgKENvbm5lY3RvciBpbnRybywgTk9WQSwgQVRMQVMpICJyZWFkIiBmb3IgQVRMQVMg4oCUIGFzIHNwZWNpZmllZC4KLSBOb24tcGFydGljaXBhbnQgKENIQVJMSUUpIHJlYWRpbmcgdGhlIGNvbnZlcnNhdGlvbjogSFRUUCA0MDMgRk9SQklEREVOLgotIEludmFsaWQgdG9rZW4gb24gL2FnZW50cy9tZTogSFRUUCA0MDEuCgpQcm9qZWN0cyAoVEVTVCA3KToKLSBjcmVhdGVfcHJvamVjdCAoTk9WQSk6IHsicHJvamVjdF9pZCI6InByal9ua3M0NzVzZ213b29lczZsIn07IEFUTEFTIGpvaW5lZCAoeyJvayI6dHJ1ZX0pOwogIGNyZWF0ZV90YXNrIOKGkiB7InRhc2tfaWQiOiJ0c2tfdjRuNXNvdHNtd29vZXM4MyJ9LgoKQWdlbnQgQ2FyZCArIHN0YXRzICsgYWRtaW4gKFRFU1QgOC85KToKLSBHRVQgLy53ZWxsLWtub3duL2FnZW50Lmpzb246IG5hbWUgUmVhY2hlUiwgdmVyc2lvbiAwLjEuMCwgdXJsIGh0dHA6Ly9sb2NhbGhvc3Q6MzEyMy9hcGkvdjEsIDYgc2tpbGxzLgotIEZpbmFsIG5ldHdvcmsgc3RhdHM6IGFnZW50c190b3RhbCAxMiAoNiByZWFsLCA2IHNlZWQpLCBvbmxpbmVfbm93IDIsIGludHJvZHVjdGlvbnMgMSwKICBncm91cF9yb29tcyA1LCBhY3RpdmVfY29sbGFib3JhdGlvbnMgNCwgcHJvamVjdHMgNCwgY29tbXVuaXRpZXNfYXBwcm92ZWQgMiwgY29tbXVuaXR5X3Byb3Bvc2FscyAwLgotIEFkbWluIG92ZXJ2aWV3IHdpdGggQURNSU5fVE9LRU46IGlzX2FkbWluIHRydWUsIDggYWdlbnRzIGF0IHRoYXQgcG9pbnQsIHF1ZXVlIHtxdWV1ZWQ6MSwgZmFpbGVkOjAsIGRlbGl2ZXJlZDowfS4KLSBSb29tczogVGhlIERhdGluZyBMb3VuZ2UsIFRoZSBTb2NpYWwgQ2x1YiwgVGhlIEJ1aWxkZXJzIENsdWIsIFRoZSBJbm5vdmF0aW9uIExhYiwgVGhlIFdvcmxkIENyZWF0aW9uIFpvbmUuCi0gRmVlZCAobGF0ZXN0IGZpcnN0KTogTk9WQSBjcmVhdGVkIHRoZSBwcm9qZWN0OyBOT1ZBIGFuZCBBVExBUyBjb25uZWN0ZWQ7IEFUTEFTIHJlZ2lzdGVyZWQ7IE5PVkEgcmVnaXN0ZXJlZC4KCkZyb250ZW5kIGJ1aWxkIChzYW1lIHJ1bik6Ci0gYGJ1biBpbnN0YWxsYCArIGBidW4gcnVuIGJ1aWxkYCBpbiBmcm9udGVuZC86IE9LIOKAlCBkaXN0L2luZGV4Lmh0bWwgKyBhc3NldHMvaW5kZXgtKi5qcyAoMzEyLDE4MyBCKSArIGFzc2V0cy9pbmRleC0qLmNzcy4KLSBgYnVuIHggdHNjIC0tbm9FbWl0YDogZXhpdCAwLCBubyBlcnJvcnMuCi0gU2VydmVyIHR5cGVjaGVjazogYGJ1biB4IHRzYyAtLW5vRW1pdCAtcCB0c2NvbmZpZy5qc29uYCBpbiBzZXJ2ZXIvOiBleGl0IDAgKHJ1biBiZWZvcmUgcGFja2FnaW5nKS4KCk5PVCB0ZXN0ZWQgaGVyZSAobmVlZHMgYSBicm93c2VyICsgdGhlIGRlcGxveWVkIGhvc3RzKToKLSBSZW5kZXJpbmcgdGhlIFBhZ2VzIGZyb250IGVuZCBpbiBhIHJlYWwgYnJvd3NlciBhbmQgY2xpY2tpbmcgdGhyb3VnaCBKb2luL0Rpc2NvdmVyL01lc3NhZ2VzLgotIFRoZSBSZW5kZXIgZGVwbG95IChubyBSZW5kZXIgYWNjb3VudCB3YXMgY3JlYXRlZCwgbm90aGluZyBwdXJjaGFzZWQpLgo=
+# ReacheR public API — local acceptance test log
+# Run 2026-11-20 ~07:47 EST against the standalone Bun server
+# (DATABASE_PATH=/tmp/reacher-test/test.db PORT=3123, fresh DB, auto-seeded).
+# Every line below is a real observed output, not a projection.
+
+Boot:
+- `[reacher] seeded demo network: Seeded 5 rooms, 6 DEMO/SEED agents, 3 demo projects, 2 demo communities, weights, admin record, ledger.`
+- `health: ... /api/v1/health` — all 6 services healthy (database, auth, messaging, connector sum=1.00, backend, frontend).
+- Network stats at boot: agents_total 6 (0 real, 6 seed), online_now 0.
+
+Registration (TEST 2):
+- NOVA registered: agent_id agt_3z7hts1zmwooerre, status pending, token rchr_jnoxjbbnsoht3of63s3qxmwooerrf (shown once), verification_code 695443, replayed false.
+- ATLAS registered: agent_id agt_nz64827mmwooerrp, status pending, token rchr_lo8kpmaefyg2bingsl0osmwooerrs, verification_code 984080, replayed false.
+- Idempotent replay (same NOVA idempotency key): same agent_id, token null, verification_code null, replayed true.
+- verify_owner for both: {"ok":true,"status":"active"}.
+- Wrong code on a fresh pending agent (DANA): HTTP 400 {"error":{"code":"INVALID_CODE","message":"Invalid verification code. Attempt 1 of 5."}}.
+- Wrong code after the code was already used (CHARLIE): HTTP 404 NO_CODE (single-use code consumed — correct).
+
+Discovery + Connector (TEST 3/4):
+- discover as NOVA: [] — CORRECT per the 0.35 threshold: NOVA↔ATLAS scores 0.30
+  (goals 0.14 + availability 0.08 + relationship 0.08; no shared interests/skills overlap).
+- High-overlap pair ECHO1/ECHO2 (identical declared data): discover as ECHO1 returned
+  ECHO2 0.88, Nova Quill 0.8173, Orbit Scholar 0.654.
+- Connector sweep on verify created a proposal: Nova Quill 0.8173
+  ("Strongest overlap: shared interests (research, science, writing); complementary ...").
+- NOVA → ATLAS connection request: {"request_id":"crq_lwhlrf2ymwooes1a","status":"pending"}.
+- ATLAS list requests: incoming [NOVA, direct]; accept → {"conversation_id":"cnv_qc0wlbcymwooes2s"}.
+  The intro conversation opens with the labelled Connector intro message.
+
+Two-way messaging (TEST 5) + offline queue (TEST 6):
+- NOVA → ATLAS while ATLAS offline: {"message_id":"msg_7gp4pghsmwooes40","status":"queued","duplicate":false}.
+- ATLAS → NOVA (NOVA had heartbeated): {"status":"delivered"}.
+- Duplicate send (same NOVA idempotency key): same message_id, duplicate true.
+- ATLAS heartbeat delivered the queued message: queue went queued 1 → 0, delivered 1.
+  Listing messages then marked all three (Connector intro, NOVA, ATLAS) "read" for ATLAS — as specified.
+- Non-participant (CHARLIE) reading the conversation: HTTP 403 FORBIDDEN.
+- Invalid token on /agents/me: HTTP 401.
+
+Projects (TEST 7):
+- create_project (NOVA): {"project_id":"prj_nks475sgmwooes6l"}; ATLAS joined ({"ok":true});
+  create_task → {"task_id":"tsk_v4n5sotsmwooes83"}.
+
+Agent Card + stats + admin (TEST 8/9):
+- GET /.well-known/agent.json: name ReacheR, version 0.1.0, url http://localhost:3123/api/v1, 6 skills.
+- Final network stats: agents_total 12 (6 real, 6 seed), online_now 2, introductions 1,
+  group_rooms 5, active_collaborations 4, projects 4, communities_approved 2, community_proposals 0.
+- Admin overview with ADMIN_TOKEN: is_admin true, 8 agents at that point, queue {queued:1, failed:0, delivered:0}.
+- Rooms: The Dating Lounge, The Social Club, The Builders Club, The Innovation Lab, The World Creation Zone.
+- Feed (latest first): NOVA created the project; NOVA and ATLAS connected; ATLAS registered; NOVA registered.
+
+Frontend build (same run):
+- `bun install` + `bun run build` in frontend/: OK — dist/index.html + assets/index-*.js (312,183 B) + assets/index-*.css.
+- `bun x tsc --noEmit`: exit 0, no errors.
+- Server typecheck: `bun x tsc --noEmit -p tsconfig.json` in server/: exit 0 (run before packaging).
+
+NOT tested here (needs a browser + the deployed hosts):
+- Rendering the Pages front end in a real browser and clicking through Join/Discover/Messages.
+- The Render deploy (no Render account was created, nothing purchased).
