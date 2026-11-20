@@ -1,1 +1,59 @@
-Ly8gU3RhbmRhbG9uZSByZXBsYWNlbWVudCBmb3IgdGhlIFNwYWNlJ3MgYGFjdGlvbkZpZWxkc2AgYnVpbGQtdGltZSBtYWNyby4KLy8KLy8gSW4gdGhlIE11c2UgU3BhY2UsIGBhY3Rpb25GaWVsZHM8dHlwZW9mIEFjdGlvbnM+KClgIGV4cGFuZGVkIChhdCBidW5kbGUKLy8gdGltZSkgdG8gcGVyLWZpZWxkIGlucHV0IGF0dHJpYnV0ZXMgZGVyaXZlZCBmcm9tIHRoZSBzZXJ2ZXIncyB6b2Qgc2NoZW1hcwovLyAobmFtZSAvIHJlcXVpcmVkIC8gbWluTGVuZ3RoIC8gbWF4TGVuZ3RoIC8gdHlwZSkuIFRoZSBwdWJsaWMgYnVpbGQgaGFzIG5vCi8vIHNlcnZlciBzY2hlbWEgYXQgYnVuZGxlIHRpbWUsIHNvIHRoaXMgc3R1YiByZXR1cm5zIHRoZSBzYW1lIHNoYXBlIHRoZSBhcHAKLy8gYWN0dWFsbHkgc3ByZWFkcyBvbnRvIGlucHV0czogdGhlIGZpZWxkJ3MgYG5hbWVgIGF0dHJpYnV0ZSwgcGx1cyB0aGUKLy8gdmFsaWRhdGlvbiBsaW1pdHMgdGhlIHNlcnZlciBlbmZvcmNlcyAoa2VwdCBpbiBzeW5jIHdpdGggc2VydmVyL3NyYy9zZXJ2ZXIudHMpLgovLyBTZXJ2ZXItc2lkZSB2YWxpZGF0aW9uIGlzIHN0aWxsIGF1dGhvcml0YXRpdmUg4oCUIHRoZXNlIGF0dHJpYnV0ZXMgYXJlIG9ubHkKLy8gYSBicm93c2VyIGNvbnZlbmllbmNlLgoKdHlwZSBGaWVsZFByb3BzID0gewogIG5hbWU6IHN0cmluZzsKICByZXF1aXJlZD86IGJvb2xlYW47CiAgbWluTGVuZ3RoPzogbnVtYmVyOwogIG1heExlbmd0aD86IG51bWJlcjsKICB0eXBlPzogc3RyaW5nOwp9OwoKY29uc3QgRklFTERfTElNSVRTOiBSZWNvcmQ8c3RyaW5nLCBSZWNvcmQ8c3RyaW5nLCBGaWVsZFByb3BzPj4gPSB7CiAgcmVnaXN0ZXJfYWdlbnQ6IHsKICAgIG5hbWU6IHsgbmFtZTogIm5hbWUiLCByZXF1aXJlZDogdHJ1ZSwgbWluTGVuZ3RoOiAyLCBtYXhMZW5ndGg6IDYwIH0sCiAgICBwbGF0Zm9ybTogeyBuYW1lOiAicGxhdGZvcm0iLCBtYXhMZW5ndGg6IDEyMCB9LAogICAgcHVycG9zZTogeyBuYW1lOiAicHVycG9zZSIsIG1heExlbmd0aDogMzAwIH0sCiAgICBiaW86IHsgbmFtZTogImJpbyIsIG1heExlbmd0aDogMTAwMCB9LAogICAgY29tbXVuaWNhdGlvbl9wcmVmczogeyBuYW1lOiAiY29tbXVuaWNhdGlvbl9wcmVmcyIsIG1heExlbmd0aDogMzAwIH0sCiAgICBvd25lcl9lbWFpbDogeyBuYW1lOiAib3duZXJfZW1haWwiLCByZXF1aXJlZDogdHJ1ZSwgdHlwZTogImVtYWlsIiwgbWF4TGVuZ3RoOiAyMDAgfSwKICB9LAogIHZlcmlmeV9vd25lcjogeyBjb2RlOiB7IG5hbWU6ICJjb2RlIiwgbWluTGVuZ3RoOiA0LCBtYXhMZW5ndGg6IDEyIH0gfSwKICBnZXRfbWU6IHsgdG9rZW46IHsgbmFtZTogInRva2VuIiwgbWluTGVuZ3RoOiA4IH0gfSwKICBkaXNjb3Zlcl9hZ2VudHM6IHsKICAgIHF1ZXJ5OiB7IG5hbWU6ICJxdWVyeSIsIG1heExlbmd0aDogMTIwIH0sCiAgICBza2lsbDogeyBuYW1lOiAic2tpbGwiLCBtYXhMZW5ndGg6IDYwIH0sCiAgICBpbnRlcmVzdDogeyBuYW1lOiAiaW50ZXJlc3QiLCBtYXhMZW5ndGg6IDYwIH0sCiAgICBnb2FsOiB7IG5hbWU6ICJnb2FsIiwgbWF4TGVuZ3RoOiA2MCB9LAogICAgcmVsYXRpb25zaGlwOiB7IG5hbWU6ICJyZWxhdGlvbnNoaXAiLCBtYXhMZW5ndGg6IDQwIH0sCiAgfSwKICBjcmVhdGVfY29udmVyc2F0aW9uOiB7IHRpdGxlOiB7IG5hbWU6ICJ0aXRsZSIsIHJlcXVpcmVkOiB0cnVlLCBtaW5MZW5ndGg6IDEsIG1heExlbmd0aDogMTIwIH0gfSwKICBzZW5kX21lc3NhZ2U6IHsgYm9keTogeyBuYW1lOiAiYm9keSIsIG1pbkxlbmd0aDogMSwgbWF4TGVuZ3RoOiA0MDAwIH0gfSwKICBjcmVhdGVfcHJvamVjdDogewogICAgdGl0bGU6IHsgbmFtZTogInRpdGxlIiwgcmVxdWlyZWQ6IHRydWUsIG1pbkxlbmd0aDogMiwgbWF4TGVuZ3RoOiAxNDAgfSwKICAgIG9iamVjdGl2ZTogeyBuYW1lOiAib2JqZWN0aXZlIiwgbWF4TGVuZ3RoOiAxMDAwIH0sCiAgfSwKfTsKCmZ1bmN0aW9uIGFjdGlvblByb3h5KGFjdGlvbjogc3RyaW5nKTogUmVjb3JkPHN0cmluZywgRmllbGRQcm9wcz4gewogIHJldHVybiBuZXcgUHJveHkoe30gYXMgUmVjb3JkPHN0cmluZywgRmllbGRQcm9wcz4sIHsKICAgIGdldChfdCwgZmllbGQ6IHN0cmluZykgewogICAgICByZXR1cm4gRklFTERfTElNSVRTW2FjdGlvbl0/LltmaWVsZF0gPz8geyBuYW1lOiBmaWVsZCB9OwogICAgfSwKICB9KTsKfQoKLy8gYEZJRUxEUy48YWN0aW9uPi48ZmllbGQ+YCDigJQgYW55IGFjdGlvbi9maWVsZCByZXNvbHZlcywgc28gdGhlIGFwcCdzCi8vIGV4aXN0aW5nIHNwcmVhZHMga2VlcCB3b3JraW5nIHVuY2hhbmdlZC4KZXhwb3J0IGNvbnN0IEZJRUxEUzogUmVjb3JkPHN0cmluZywgUmVjb3JkPHN0cmluZywgRmllbGRQcm9wcz4+ID0gbmV3IFByb3h5KAogIHt9IGFzIFJlY29yZDxzdHJpbmcsIFJlY29yZDxzdHJpbmcsIEZpZWxkUHJvcHM+PiwKICB7IGdldChfdCwgYWN0aW9uOiBzdHJpbmcpIHsgcmV0dXJuIGFjdGlvblByb3h5KGFjdGlvbik7IH0gfSwKKTsK
+// Standalone replacement for the Space's `actionFields` build-time macro.
+//
+// In the Muse Space, `actionFields<typeof Actions>()` expanded (at bundle
+// time) to per-field input attributes derived from the server's zod schemas
+// (name / required / minLength / maxLength / type). The public build has no
+// server schema at bundle time, so this stub returns the same shape the app
+// actually spreads onto inputs: the field's `name` attribute, plus the
+// validation limits the server enforces (kept in sync with server/src/server.ts).
+// Server-side validation is still authoritative — these attributes are only
+// a browser convenience.
+
+type FieldProps = {
+  name: string;
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  type?: string;
+};
+
+const FIELD_LIMITS: Record<string, Record<string, FieldProps>> = {
+  register_agent: {
+    name: { name: "name", required: true, minLength: 2, maxLength: 60 },
+    platform: { name: "platform", maxLength: 120 },
+    purpose: { name: "purpose", maxLength: 300 },
+    bio: { name: "bio", maxLength: 1000 },
+    communication_prefs: { name: "communication_prefs", maxLength: 300 },
+    owner_email: { name: "owner_email", required: true, type: "email", maxLength: 200 },
+  },
+  verify_owner: { code: { name: "code", minLength: 4, maxLength: 12 } },
+  get_me: { token: { name: "token", minLength: 8 } },
+  discover_agents: {
+    query: { name: "query", maxLength: 120 },
+    skill: { name: "skill", maxLength: 60 },
+    interest: { name: "interest", maxLength: 60 },
+    goal: { name: "goal", maxLength: 60 },
+    relationship: { name: "relationship", maxLength: 40 },
+  },
+  create_conversation: { title: { name: "title", required: true, minLength: 1, maxLength: 120 } },
+  send_message: { body: { name: "body", minLength: 1, maxLength: 4000 } },
+  create_project: {
+    title: { name: "title", required: true, minLength: 2, maxLength: 140 },
+    objective: { name: "objective", maxLength: 1000 },
+  },
+};
+
+function actionProxy(action: string): Record<string, FieldProps> {
+  return new Proxy({} as Record<string, FieldProps>, {
+    get(_t, field: string) {
+      return FIELD_LIMITS[action]?.[field] ?? { name: field };
+    },
+  });
+}
+
+// `FIELDS.<action>.<field>` — any action/field resolves, so the app's
+// existing spreads keep working unchanged.
+export const FIELDS: Record<string, Record<string, FieldProps>> = new Proxy(
+  {} as Record<string, Record<string, FieldProps>>,
+  { get(_t, action: string) { return actionProxy(action); } },
+);

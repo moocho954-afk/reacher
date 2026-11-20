@@ -1,1 +1,41 @@
-QGltcG9ydCAidGFpbHdpbmRjc3MiOwpAaW1wb3J0ICJ0YWlsd2luZGNzcy1zYWZlLWFyZWEiOwoKQHRoZW1lIHsKICAtLXRleHQteHM6IDEycHg7IC0tdGV4dC14cy0tbGluZS1oZWlnaHQ6IDE2cHg7CiAgLS10ZXh0LXNtOiAxNHB4OyAtLXRleHQtc20tLWxpbmUtaGVpZ2h0OiAyMHB4OwogIC0tdGV4dC1iYXNlOiAxNnB4OyAtLXRleHQtYmFzZS0tbGluZS1oZWlnaHQ6IDI0cHg7CiAgLS10ZXh0LWxnOiAxOHB4OyAtLXRleHQtbGctLWxpbmUtaGVpZ2h0OiAyOHB4OwogIC0tdGV4dC14bDogMjBweDsgLS10ZXh0LXhsLS1saW5lLWhlaWdodDogMjhweDsKICAtLXRleHQtMnhsOiAyNHB4OyAtLXRleHQtMnhsLS1saW5lLWhlaWdodDogMzJweDsKICAtLXRleHQtM3hsOiAzMHB4OyAtLXRleHQtM3hsLS1saW5lLWhlaWdodDogMzZweDsKfQoKOnJvb3QgewogIGNvbG9yLXNjaGVtZTogZGFyazsKICAtLWJnOiAjMDcwOTBGOwogIC0tc3VyZmFjZTogIzBFMTQyMDsKICAtLXN1cmZhY2UyOiAjMTUxRTJFOwogIC0tdGV4dDogI0U4RUVGNzsKICAtLWRpbTogIzkzQTFCODsKICAtLWJvcmRlcjogIzIyMzA0QTsKICAtLWFjY2VudDogIzIyRDNFRTsKICAtLXZpb2xldDogIzhCNUNGNjsKICAtLXN1Y2Nlc3M6ICMzNEQzOTk7CiAgLS13YXJuaW5nOiAjRkJCRjI0OwogIC0tZGFuZ2VyOiAjRjg3MTcxOwogIC0tYW1iZXI6ICNGNTlFMEI7CiAgLS1yYWRpdXM6IDEycHg7CiAgLS1zcGFjZS1zdXJmYWNlOiB2YXIoLS1zdXJmYWNlKTsKICAtLXNwYWNlLXN1cmZhY2UtYWx0OiB2YXIoLS1zdXJmYWNlMik7CiAgLS1zcGFjZS1tdXRlZDogdmFyKC0tZGltKTsKICAtLXNwYWNlLWJvcmRlcjogdmFyKC0tYm9yZGVyKTsKICAtLXNwYWNlLWFjY2VudDogdmFyKC0tYWNjZW50KTsKfQoKQGxheWVyIGJhc2UgewogIGJ1dHRvbiwgW3JvbGU9ImJ1dHRvbiJdLCBzZWxlY3QsIHN1bW1hcnksIGlucHV0Om5vdChbdHlwZT0iY2hlY2tib3giXSwgW3R5cGU9InJhZGlvIl0pIHsKICAgIG1pbi1oZWlnaHQ6IDIuMjVyZW07CiAgfQogIGJvZHkgeyBiYWNrZ3JvdW5kOiB2YXIoLS1iZyk7IH0KfQo=
+@import "tailwindcss";
+@import "tailwindcss-safe-area";
+
+@theme {
+  --text-xs: 12px; --text-xs--line-height: 16px;
+  --text-sm: 14px; --text-sm--line-height: 20px;
+  --text-base: 16px; --text-base--line-height: 24px;
+  --text-lg: 18px; --text-lg--line-height: 28px;
+  --text-xl: 20px; --text-xl--line-height: 28px;
+  --text-2xl: 24px; --text-2xl--line-height: 32px;
+  --text-3xl: 30px; --text-3xl--line-height: 36px;
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #07090F;
+  --surface: #0E1420;
+  --surface2: #151E2E;
+  --text: #E8EEF7;
+  --dim: #93A1B8;
+  --border: #22304A;
+  --accent: #22D3EE;
+  --violet: #8B5CF6;
+  --success: #34D399;
+  --warning: #FBBF24;
+  --danger: #F87171;
+  --amber: #F59E0B;
+  --radius: 12px;
+  --space-surface: var(--surface);
+  --space-surface-alt: var(--surface2);
+  --space-muted: var(--dim);
+  --space-border: var(--border);
+  --space-accent: var(--accent);
+}
+
+@layer base {
+  button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) {
+    min-height: 2.25rem;
+  }
+  body { background: var(--bg); }
+}

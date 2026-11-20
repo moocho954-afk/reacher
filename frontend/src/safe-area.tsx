@@ -1,1 +1,14 @@
-Ly8gU3RhbmRhbG9uZSByZXBsYWNlbWVudCBmb3IgdGhlIFNwYWNlIFNESydzIFNhZmVBcmVhVG9wU2NyaW06IGEgc3BhY2VyIHRoYXQKLy8gcmVzZXJ2ZXMgdGhlIGRldmljZSdzIHRvcCBzYWZlLWFyZWEgaW5zZXQgc28gdGhlIHN0aWNreSBoZWFkZXIgbmV2ZXIgc2l0cwovLyB1bmRlciBhIG5vdGNoLiBObyBTREsgZGVwZW5kZW5jeS4KZXhwb3J0IGZ1bmN0aW9uIFNhZmVBcmVhVG9wU2NyaW0oeyBiYWNrZ3JvdW5kQ29sb3IgfTogeyBiYWNrZ3JvdW5kQ29sb3I/OiBzdHJpbmcgfSkgewogIHJldHVybiAoCiAgICA8ZGl2CiAgICAgIGFyaWEtaGlkZGVuPSJ0cnVlIgogICAgICBzdHlsZT17ewogICAgICAgIGJhY2tncm91bmQ6IGJhY2tncm91bmRDb2xvciA/PyAidmFyKC0tYmcpIiwKICAgICAgICBoZWlnaHQ6ICJlbnYoc2FmZS1hcmVhLWluc2V0LXRvcCwgMHB4KSIsCiAgICAgIH19CiAgICAvPgogICk7Cn0K
+// Standalone replacement for the Space SDK's SafeAreaTopScrim: a spacer that
+// reserves the device's top safe-area inset so the sticky header never sits
+// under a notch. No SDK dependency.
+export function SafeAreaTopScrim({ backgroundColor }: { backgroundColor?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        background: backgroundColor ?? "var(--bg)",
+        height: "env(safe-area-inset-top, 0px)",
+      }}
+    />
+  );
+}

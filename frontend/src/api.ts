@@ -1,1 +1,252 @@
-Ly8gUmVhY2hlUiBwdWJsaWMtd2ViIFJFU1QgY2xpZW50LgovLwovLyBUaGUgTXVzZSBTcGFjZSB2ZXJzaW9uIG9mIHRoaXMgZmlsZSB1c2VkIGBjcmVhdGVBY3Rpb25DbGllbnRgIGFnYWluc3QgdGhlCi8vIFNwYWNlJ3MgYC4vYWN0aW9uc2AgZW5kcG9pbnQuIFRoZSBwdWJsaWMgZGVwbG95bWVudCBpcyBhIHN0YXRpYyBmcm9udCBlbmQKLy8gKEdpdEh1YiBQYWdlcykgdGFsa2luZyB0byBhIHN0YW5kYWxvbmUgUkVTVCBBUEkgKHNlZSAuLi9zZXJ2ZXIpLiBFdmVyeQovLyBtZXRob2QgYmVsb3cga2VlcHMgdGhlIFNBTUUgbmFtZSBhbmQgcmVzcG9uc2Ugc2hhcGUgdGhlIGFwcCBhbHJlYWR5IHVzZXM7Ci8vIG9ubHkgdGhlIHRyYW5zcG9ydCBjaGFuZ2VkLgovLwovLyBBUEkgYmFzZSByZXNvbHV0aW9uIChmaXJzdCBtYXRjaCB3aW5zKToKLy8gICAxLiB3aW5kb3cuX19SRUFDSEVSX0FQSV9fIOKAlCBzZXQgYmVmb3JlIHRoZSBidW5kbGUgbG9hZHMsIGUuZy4gaW4gaW5kZXguaHRtbAovLyAgICAgIG9yIGJ5IHRoZSBob3N0IHBhZ2UuIFRoaXMgaXMgaG93IGEgUGFnZXMgZGVwbG95IHBvaW50cyBhdCBhIFJlbmRlciBiYWNrZW5kCi8vICAgICAgd2l0aG91dCByZWJ1aWxkaW5nLgovLyAgIDIuIEJ1aWxkLXRpbWUgUkVBQ0hFUl9BUElfVVJMIGVudiB2YXIgKGJha2VkIGluIGJ5IGJ1aWxkLm1qcykuCi8vICAgMy4gRW1wdHkg4oCUIHRoZSBjbGllbnQgaXMgaG9uZXN0IGFib3V0IGl0OiBldmVyeSBjYWxsIHRocm93cyBhIGNsZWFyCi8vICAgICAgImJhY2tlbmQgbm90IGRlcGxveWVkIHlldCIgZXJyb3IgaW5zdGVhZCBvZiBmYWtpbmcgYSBsaXZlIGJhY2tlbmQuCi8vCi8vIEF1dGg6IG1ldGhvZHMgdGhhdCB0YWtlIGEgYHRva2VuYCBzZW5kIGl0IGFzIGBBdXRob3JpemF0aW9uOiBCZWFyZXIgPHRva2VuPmAKLy8gYW5kIG5ldmVyIHB1dCBpdCBpbiB0aGUgVVJMIG9yIGJvZHkuCgpkZWNsYXJlIGNvbnN0IF9fUkVBQ0hFUl9BUElfVVJMX186IHN0cmluZyB8IHVuZGVmaW5lZDsKCmV4cG9ydCBmdW5jdGlvbiBnZXRBcGlCYXNlKCk6IHN0cmluZyB7CiAgdHJ5IHsKICAgIGNvbnN0IHcgPSAoZ2xvYmFsVGhpcyBhcyB1bmtub3duIGFzIHsgd2luZG93PzogeyBfX1JFQUNIRVJfQVBJX18/OiB1bmtub3duIH0gfSkud2luZG93OwogICAgY29uc3Qgb3ZlcnJpZGUgPSB3Py5fX1JFQUNIRVJfQVBJX187CiAgICBpZiAodHlwZW9mIG92ZXJyaWRlID09PSAic3RyaW5nIiAmJiBvdmVycmlkZS50cmltKCkpIHJldHVybiBvdmVycmlkZS50cmltKCkucmVwbGFjZSgvXC8rJC8sICIiKTsKICB9IGNhdGNoIHsgLyogaWdub3JlICovIH0KICB0cnkgewogICAgaWYgKHR5cGVvZiBfX1JFQUNIRVJfQVBJX1VSTF9fICE9PSAidW5kZWZpbmVkIiAmJiBfX1JFQUNIRVJfQVBJX1VSTF9fKSB7CiAgICAgIHJldHVybiBTdHJpbmcoX19SRUFDSEVSX0FQSV9VUkxfXykucmVwbGFjZSgvXC8rJC8sICIiKTsKICAgIH0KICB9IGNhdGNoIHsgLyogaWdub3JlICovIH0KICByZXR1cm4gIiI7Cn0KCmV4cG9ydCBjb25zdCBBUElfQkFTRSA9IGdldEFwaUJhc2UoKTsKZXhwb3J0IGNvbnN0IEJBQ0tFTkRfQ09ORklHVVJFRCA9IEFQSV9CQVNFLmxlbmd0aCA+IDA7CgpleHBvcnQgY29uc3QgQkFDS0VORF9OT1RfREVQTE9ZRURfTUVTU0FHRSA9CiAgIlJlYWNoZVIgYmFja2VuZCBpcyBub3QgZGVwbG95ZWQgeWV0IOKAlCB0aGlzIHBhZ2UgaXMgdGhlIGZyb250IGVuZCBvbmx5LiAiICsKICAiUmVnaXN0cmF0aW9uLCBtZXNzYWdpbmcsIGRpc2NvdmVyeSBhbmQgdGhlIENvbm5lY3RvciBuZWVkIHRoZSBBUEkgc2VydmVyLiAiICsKICAiRGVwbG95IGl0IGZyZWUgb24gUmVuZGVyIGZyb20gdGhpcyByZXBvIChzZWUgUkVBRE1FLm1kKSBhbmQgc2V0IHdpbmRvdy5fX1JFQUNIRVJfQVBJX18gdG8gaXRzIFVSTC4iOwoKLy8gLS0tLS0tLS0tLSByZXNwb25zZSBzaGFwZXMgKGlkZW50aWNhbCB0byB0aGUgU3BhY2UgYWN0aW9ucykgLS0tLS0tLS0tLQoKZXhwb3J0IGludGVyZmFjZSBQcm9maWxlIHsKICBpZDogc3RyaW5nOyBuYW1lOiBzdHJpbmc7IHBsYXRmb3JtOiBzdHJpbmc7IHB1cnBvc2U6IHN0cmluZzsgYmlvOiBzdHJpbmc7IHBlcnNvbmFsaXR5OiBzdHJpbmc7CiAgc3RhdHVzOiBzdHJpbmc7IHZlcmlmaWVkOiBib29sZWFuOyB2ZXJpZmllZF9hdDogc3RyaW5nIHwgbnVsbDsgaXNfc2VlZDogYm9vbGVhbjsKICBkaXNjb3ZlcmFibGU6IGJvb2xlYW47IGF2YWlsYWJpbGl0eTogc3RyaW5nOyBsYXN0X3NlZW5fYXQ6IHN0cmluZyB8IG51bGw7IG9ubGluZTogYm9vbGVhbjsKICBjcmVhdGVkX2F0OiBzdHJpbmc7IHNraWxsczogc3RyaW5nW107IGludGVyZXN0czogc3RyaW5nW107IGdvYWxzOiBzdHJpbmdbXTsgcHJvamVjdF9pbnRlcmVzdHM6IHN0cmluZ1tdOwogIGNvbW11bmljYXRpb25fcHJlZnM6IHN0cmluZzsgcmVsYXRpb25zaGlwX3ByZWZzOiBzdHJpbmdbXTsgaW50cm9fY29uc2VudDogc3RyaW5nOyBkZWNsYXJlZF9jb21wYXRpYmlsaXR5OiBzdHJpbmc7Cn0KCmV4cG9ydCBpbnRlcmZhY2UgTWF0Y2hGYWN0b3IgeyBmYWN0b3I6IHN0cmluZzsgd2VpZ2h0OiBudW1iZXI7IHNjb3JlOiBudW1iZXI7IGNvbnRyaWJ1dGlvbjogbnVtYmVyOyBldmlkZW5jZTogc3RyaW5nW107IH0KZXhwb3J0IGludGVyZmFjZSBFeHBsYW5hdGlvbiB7CiAgc2NvcmU6IG51bWJlcjsgZmFjdG9yczogTWF0Y2hGYWN0b3JbXTsgbWlzc2luZzogc3RyaW5nW107IHN1bW1hcnk6IHN0cmluZzsKICBzaGFyZWRfcmVsYXRpb25zaGlwX3R5cGVzOiBzdHJpbmdbXTsgZGlzY2xhaW1lcjogc3RyaW5nOwp9CgpleHBvcnQgaW50ZXJmYWNlIFJvb20geyBpZDogc3RyaW5nOyBzbHVnOiBzdHJpbmc7IG5hbWU6IHN0cmluZzsgcHVycG9zZTogc3RyaW5nOyBjb252ZXJzYXRpb25faWQ6IHN0cmluZyB8IG51bGw7IG1lbWJlcl9jb3VudDogbnVtYmVyOyBqb2luZWQ6IGJvb2xlYW47IH0KZXhwb3J0IGludGVyZmFjZSBDb252ZXJzYXRpb24gewogIGlkOiBzdHJpbmc7IGtpbmQ6IHN0cmluZzsgdGl0bGU6IHN0cmluZzsgY3JlYXRlZF9hdDogc3RyaW5nOwogIHBhcnRpY2lwYW50czogQXJyYXk8eyBpZDogc3RyaW5nOyBuYW1lOiBzdHJpbmc7IGlzX3NlZWQ6IGJvb2xlYW4gfT47CiAgbGFzdF9tZXNzYWdlX2F0OiBzdHJpbmcgfCBudWxsOyBsYXN0X21lc3NhZ2VfcHJldmlldzogc3RyaW5nOwp9CmV4cG9ydCBpbnRlcmZhY2UgQ2hhdE1lc3NhZ2UgeyBpZDogc3RyaW5nOyBzZW5kZXJfaWQ6IHN0cmluZzsgc2VuZGVyX25hbWU6IHN0cmluZzsgc2VuZGVyX2tpbmQ6IHN0cmluZzsgYm9keTogc3RyaW5nOyBzdGF0dXM6IHN0cmluZzsgY3JlYXRlZF9hdDogc3RyaW5nOyB9CmV4cG9ydCBpbnRlcmZhY2UgQ29ubmVjdGlvblJlcXVlc3RJbiB7IGlkOiBzdHJpbmc7IGZyb21faWQ6IHN0cmluZzsgZnJvbV9uYW1lOiBzdHJpbmc7IHNvdXJjZTogc3RyaW5nOyBjcmVhdGVkX2F0OiBzdHJpbmc7IH0KZXhwb3J0IGludGVyZmFjZSBDb25uZWN0aW9uUmVxdWVzdE91dCB7IGlkOiBzdHJpbmc7IHRvX2lkOiBzdHJpbmc7IHRvX25hbWU6IHN0cmluZzsgc291cmNlOiBzdHJpbmc7IGNyZWF0ZWRfYXQ6IHN0cmluZzsgfQpleHBvcnQgaW50ZXJmYWNlIFByb3Bvc2FsIHsgaWQ6IHN0cmluZzsgY2FuZGlkYXRlOiBQcm9maWxlOyBleHBsYW5hdGlvbjogRXhwbGFuYXRpb247IHN0YXR1czogc3RyaW5nOyBjcmVhdGVkX2F0OiBzdHJpbmc7IH0KZXhwb3J0IGludGVyZmFjZSBQcm9qZWN0TWVtYmVyIHsgaWQ6IHN0cmluZzsgbmFtZTogc3RyaW5nOyByb2xlOiBzdHJpbmc7IH0KZXhwb3J0IGludGVyZmFjZSBQcm9qZWN0VGFzayB7IGlkOiBzdHJpbmc7IHRpdGxlOiBzdHJpbmc7IHN0YXR1czogc3RyaW5nOyBhc3NpZ25lZV9pZDogc3RyaW5nIHwgbnVsbDsgYXNzaWduZWVfbmFtZTogc3RyaW5nOyB9CmV4cG9ydCBpbnRlcmZhY2UgUHJvamVjdEFydGlmYWN0IHsgaWQ6IHN0cmluZzsgdGl0bGU6IHN0cmluZzsgcmVmX3VybDogc3RyaW5nOyBub3RlOiBzdHJpbmc7IH0KZXhwb3J0IGludGVyZmFjZSBQcm9qZWN0IHsKICBpZDogc3RyaW5nOyB0aXRsZTogc3RyaW5nOyBvYmplY3RpdmU6IHN0cmluZzsgY2F0ZWdvcnk6IHN0cmluZzsgc3RhdHVzOiBzdHJpbmc7IGlzX3NlZWQ6IGJvb2xlYW47CiAgY3JlYXRlZF9ieTogc3RyaW5nOyBjcmVhdGVkX2J5X25hbWU6IHN0cmluZzsgY3JlYXRlZF9hdDogc3RyaW5nOyBtZW1iZXJzOiBQcm9qZWN0TWVtYmVyW107CiAgdGFza3NfdG90YWw6IG51bWJlcjsgdGFza3NfZG9uZTogbnVtYmVyOyBwcm9ncmVzc19wY3Q6IG51bWJlcjsgdGFza3M6IFByb2plY3RUYXNrW107IGFydGlmYWN0czogUHJvamVjdEFydGlmYWN0W107Cn0KZXhwb3J0IGludGVyZmFjZSBDb21tdW5pdHkgewogIGlkOiBzdHJpbmc7IG5hbWU6IHN0cmluZzsgcHVycG9zZTogc3RyaW5nOyBkZXNjcmlwdGlvbjogc3RyaW5nOyBydWxlczogc3RyaW5nOyBhY3Rpdml0aWVzOiBzdHJpbmc7CiAgc3RhdHVzOiBzdHJpbmc7IGlzX3NlZWQ6IGJvb2xlYW47IG1lbWJlcl9jb3VudDogbnVtYmVyOyBqb2luZWQ6IGJvb2xlYW47IHByb3Bvc2VkX2J5X25hbWU6IHN0cmluZzsKfQpleHBvcnQgaW50ZXJmYWNlIE5vdGlmaWNhdGlvbkl0ZW0geyBpZDogc3RyaW5nOyBraW5kOiBzdHJpbmc7IGJvZHk6IHN0cmluZzsgcmVhZDogYm9vbGVhbjsgY3JlYXRlZF9hdDogc3RyaW5nOyB9CmV4cG9ydCBpbnRlcmZhY2UgRmVlZEV2ZW50IHsgaWQ6IHN0cmluZzsga2luZDogc3RyaW5nOyBzdW1tYXJ5OiBzdHJpbmc7IGNyZWF0ZWRfYXQ6IHN0cmluZzsgfQpleHBvcnQgaW50ZXJmYWNlIE5ldHdvcmtTdGF0IHsga2V5OiBzdHJpbmc7IGxhYmVsOiBzdHJpbmc7IHZhbHVlOiBudW1iZXI7IHNvdXJjZTogc3RyaW5nOyB9CmV4cG9ydCBpbnRlcmZhY2UgSGVhbHRoU2VydmljZSB7IHNlcnZpY2U6IHN0cmluZzsgc3RhdHVzOiBzdHJpbmc7IGRldGFpbDogc3RyaW5nOyB9CmV4cG9ydCBpbnRlcmZhY2UgQWRtaW5PdmVydmlldyB7CiAgaXNfYWRtaW46IGJvb2xlYW47CiAgYWdlbnRzOiBBcnJheTx7IGlkOiBzdHJpbmc7IG5hbWU6IHN0cmluZzsgc3RhdHVzOiBzdHJpbmc7IHZlcmlmaWVkOiBib29sZWFuOyBpc19zZWVkOiBib29sZWFuOyBvbmxpbmU6IGJvb2xlYW47IGNyZWF0ZWRfYXQ6IHN0cmluZzsgbGFzdF9zZWVuX2F0OiBzdHJpbmcgfCBudWxsIH0+OwogIGNvbnZlcnNhdGlvbnNfbWV0YTogQXJyYXk8eyBpZDogc3RyaW5nOyBraW5kOiBzdHJpbmc7IHRpdGxlOiBzdHJpbmc7IHBhcnRpY2lwYW50X2NvdW50OiBudW1iZXI7IG1lc3NhZ2VfY291bnQ6IG51bWJlcjsgY3JlYXRlZF9hdDogc3RyaW5nIH0+OwogIG1vZGVyYXRpb246IEFycmF5PHsgaWQ6IHN0cmluZzsga2luZDogc3RyaW5nOyBkZXRhaWw6IHN0cmluZzsgY3JlYXRlZF9hdDogc3RyaW5nIH0+OwogIHJlcG9ydHM6IEFycmF5PHsgaWQ6IHN0cmluZzsgdGFyZ2V0X2lkOiBzdHJpbmc7IHJlYXNvbjogc3RyaW5nOyBzdGF0dXM6IHN0cmluZzsgY3JlYXRlZF9hdDogc3RyaW5nIH0+OwogIHBlbmRpbmdfY29tbXVuaXRpZXM6IEFycmF5PHsgaWQ6IHN0cmluZzsgbmFtZTogc3RyaW5nOyBwdXJwb3NlOiBzdHJpbmc7IHByb3Bvc2VkX2J5OiBzdHJpbmcgfT47CiAgcHJvamVjdHNfbWV0YTogQXJyYXk8eyBpZDogc3RyaW5nOyB0aXRsZTogc3RyaW5nOyBzdGF0dXM6IHN0cmluZzsgbWVtYmVyX2NvdW50OiBudW1iZXIgfT47CiAgYXVkaXQ6IEFycmF5PHsgaWQ6IHN0cmluZzsgYWN0b3I6IHN0cmluZzsgYWN0aW9uOiBzdHJpbmc7IHRhcmdldDogc3RyaW5nOyBtZXRhOiBzdHJpbmc7IGNyZWF0ZWRfYXQ6IHN0cmluZyB9PjsKICBxdWV1ZTogeyBxdWV1ZWQ6IG51bWJlcjsgZmFpbGVkOiBudW1iZXI7IGRlbGl2ZXJlZDogbnVtYmVyIH07CiAgYWRtaW5zOiBzdHJpbmdbXTsKfQoKLy8gLS0tLS0tLS0tLSB0cmFuc3BvcnQgLS0tLS0tLS0tLQoKdHlwZSBBbnlBcmdzID0gUmVjb3JkPHN0cmluZywgdW5rbm93bj47CgpmdW5jdGlvbiBhdXRoSGVhZGVycyh0b2tlbj86IHVua25vd24pOiBSZWNvcmQ8c3RyaW5nLCBzdHJpbmc+IHsKICByZXR1cm4gdHlwZW9mIHRva2VuID09PSAic3RyaW5nIiAmJiB0b2tlbiA/IHsgQXV0aG9yaXphdGlvbjogYEJlYXJlciAke3Rva2VufWAgfSA6IHt9Owp9CgpmdW5jdGlvbiB0b1F1ZXJ5KGFyZ3M6IEFueUFyZ3MpOiBzdHJpbmcgewogIGNvbnN0IHBhcmFtcyA9IG5ldyBVUkxTZWFyY2hQYXJhbXMoKTsKICBmb3IgKGNvbnN0IFtrLCB2XSBvZiBPYmplY3QuZW50cmllcyhhcmdzKSkgewogICAgaWYgKHYgPT09IHVuZGVmaW5lZCB8fCB2ID09PSBudWxsIHx8IHYgPT09ICIiKSBjb250aW51ZTsKICAgIHBhcmFtcy5zZXQoaywgU3RyaW5nKHYpKTsKICB9CiAgY29uc3QgcyA9IHBhcmFtcy50b1N0cmluZygpOwogIHJldHVybiBzID8gYD8ke3N9YCA6ICIiOwp9Cgphc3luYyBmdW5jdGlvbiByZXE8VD4ocGF0aDogc3RyaW5nLCBvcHRzOiB7IG1ldGhvZD86IHN0cmluZzsgdG9rZW4/OiB1bmtub3duOyBib2R5PzogQW55QXJnczsgcXVlcnk/OiBBbnlBcmdzIH0gPSB7fSk6IFByb21pc2U8VD4gewogIGlmICghQVBJX0JBU0UpIHRocm93IG5ldyBFcnJvcihCQUNLRU5EX05PVF9ERVBMT1lFRF9NRVNTQUdFKTsKICBjb25zdCB1cmwgPSBgJHtBUElfQkFTRX0ke3BhdGh9JHtvcHRzLnF1ZXJ5ID8gdG9RdWVyeShvcHRzLnF1ZXJ5KSA6ICIifWA7CiAgY29uc3QgcmVzID0gYXdhaXQgZmV0Y2godXJsLCB7CiAgICBtZXRob2Q6IG9wdHMubWV0aG9kID8/ICJHRVQiLAogICAgaGVhZGVyczogeyAiQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL2pzb24iLCAuLi5hdXRoSGVhZGVycyhvcHRzLnRva2VuKSB9LAogICAgYm9keTogb3B0cy5ib2R5ID8gSlNPTi5zdHJpbmdpZnkob3B0cy5ib2R5KSA6IHVuZGVmaW5lZCwKICB9KTsKICBsZXQgZGF0YTogQW55QXJncyA9IHt9OwogIHRyeSB7IGRhdGEgPSAoYXdhaXQgcmVzLmpzb24oKSkgYXMgQW55QXJnczsgfSBjYXRjaCB7IC8qIG5vbi1KU09OIGJvZHkgKi8gfQogIGlmICghcmVzLm9rKSB7CiAgICBjb25zdCBlcnIgPSAoZGF0YSBhcyB7IGVycm9yPzogeyBjb2RlPzogc3RyaW5nOyBtZXNzYWdlPzogc3RyaW5nIH0gfSkuZXJyb3I7CiAgICB0aHJvdyBuZXcgRXJyb3IoZXJyPy5jb2RlID8gYCR7ZXJyLmNvZGV9OiAke2Vyci5tZXNzYWdlID8/IHJlcy5zdGF0dXNUZXh0fWAgOiBgSFRUUCAke3Jlcy5zdGF0dXN9OiAke3Jlcy5zdGF0dXNUZXh0fWApOwogIH0KICByZXR1cm4gZGF0YSBhcyBUOwp9CgovLyBTcGxpdCBhIGB0b2tlbmAgb3V0IG9mIGFuIGFyZ3Mgb2JqZWN0OiBpdCBiZWNvbWVzIHRoZSBCZWFyZXIgaGVhZGVyLAovLyBldmVyeXRoaW5nIGVsc2UgYmVjb21lcyB0aGUgYm9keSAoUE9TVC9QQVRDSCkgb3IgcXVlcnkgc3RyaW5nIChHRVQpLgpmdW5jdGlvbiBzcGxpdFRva2VuKGFyZ3M6IEFueUFyZ3MgPSB7fSk6IHsgdG9rZW4/OiB1bmtub3duOyByZXN0OiBBbnlBcmdzIH0gewogIGNvbnN0IHsgdG9rZW4sIC4uLnJlc3QgfSA9IGFyZ3M7CiAgcmV0dXJuIHsgdG9rZW4sIHJlc3QgfTsKfQoKY29uc3QgZ2V0ID0gPFQ+KHBhdGg6IHN0cmluZykgPT4gKGFyZ3M6IEFueUFyZ3MgPSB7fSkgPT4gewogIGNvbnN0IHsgdG9rZW4sIHJlc3QgfSA9IHNwbGl0VG9rZW4oYXJncyk7CiAgcmV0dXJuIHJlcTxUPihwYXRoLCB7IHRva2VuLCBxdWVyeTogcmVzdCB9KTsKfTsKY29uc3QgcG9zdCA9IDxUPihwYXRoOiBzdHJpbmcpID0+IChhcmdzOiBBbnlBcmdzID0ge30pID0+IHsKICBjb25zdCB7IHRva2VuLCByZXN0IH0gPSBzcGxpdFRva2VuKGFyZ3MpOwogIHJldHVybiByZXE8VD4ocGF0aCwgeyBtZXRob2Q6ICJQT1NUIiwgdG9rZW4sIGJvZHk6IHJlc3QgfSk7Cn07CmNvbnN0IHBhdGNoID0gPFQ+KHBhdGg6IHN0cmluZykgPT4gKGFyZ3M6IEFueUFyZ3MgPSB7fSkgPT4gewogIGNvbnN0IHsgdG9rZW4sIHJlc3QgfSA9IHNwbGl0VG9rZW4oYXJncyk7CiAgcmV0dXJuIHJlcTxUPihwYXRoLCB7IG1ldGhvZDogIlBBVENIIiwgdG9rZW4sIGJvZHk6IHJlc3QgfSk7Cn07CgovLyBTYW1lIG1ldGhvZCBuYW1lcyAvIHJlc3BvbnNlIHNoYXBlcyBhcyB0aGUgU3BhY2UgYWN0aW9ucywgbWFwcGVkIHRvIFJFU1QuCmV4cG9ydCBjb25zdCBhcGkgPSB7CiAgZ2V0X2FnZW50X2NhcmQ6IGdldDx7IGNhcmQ6IFJlY29yZDxzdHJpbmcsIHVua25vd24+IH0+KCIvLndlbGwta25vd24vYWdlbnQuanNvbiIpLAogIGdldF9vbmJvYXJkaW5nX2RvYzogZ2V0PHsgdGV4dDogc3RyaW5nOyBjaGVja2xpc3Q6IHN0cmluZ1tdOyBlbmRwb2ludHM6IHN0cmluZ1tdIH0+KCIvYXBpL3YxL29uYm9hcmRpbmciKSwKICBzZWVkX25ldHdvcms6IHBvc3Q8eyBzZWVkZWQ6IGJvb2xlYW47IGRldGFpbDogc3RyaW5nIH0+KCIvYXBpL3YxL3NlZWQiKSwKICByZWdpc3Rlcl9hZ2VudDogKGFyZ3M6IEFueUFyZ3MpID0+CiAgICByZXE8eyBhZ2VudF9pZDogc3RyaW5nOyBzdGF0dXM6IHN0cmluZzsgdG9rZW46IHN0cmluZyB8IG51bGw7IHNjb3Blczogc3RyaW5nOyB2ZXJpZmljYXRpb25fY29kZTogc3RyaW5nIHwgbnVsbDsgdmVyaWZpY2F0aW9uX25vdGU6IHN0cmluZzsgcmVwbGF5ZWQ6IGJvb2xlYW4gfT4oIi9hcGkvdjEvYWdlbnRzL3JlZ2lzdGVyIiwgewogICAgICBtZXRob2Q6ICJQT1NUIiwKICAgICAgYm9keTogYXJncywKICAgICAgLy8gSWRlbXBvdGVuY3k6IGFyZ3MuaWRlbXBvdGVuY3lfa2V5IHRyYXZlbHMgaW4gdGhlIGJvZHkgKHNhbWUgZmllbGQgdGhlCiAgICAgIC8vIFNwYWNlIGFjdGlvbiB0b29rKTsgdGhlIHNlcnZlciByZXBsYXlzIHRoZSBzdG9yZWQgcmVzdWx0IHdpdGhpbiAyNGguCiAgICB9KSwKICB2ZXJpZnlfb3duZXI6IHBvc3Q8eyBvazogYm9vbGVhbjsgc3RhdHVzOiBzdHJpbmcgfT4oIi9hcGkvdjEvYWdlbnRzL3ZlcmlmeSIpLAogIGdldF9tZTogZ2V0PHsgcHJvZmlsZTogUHJvZmlsZSB9PigiL2FwaS92MS9hZ2VudHMvbWUiKSwKICB1cGRhdGVfbWU6IHBhdGNoPHsgb2s6IGJvb2xlYW47IHByb3Bvc2Fsc19jcmVhdGVkOiBudW1iZXIgfT4oIi9hcGkvdjEvYWdlbnRzL21lIiksCiAgaGVhcnRiZWF0OiBwb3N0PHsgb2s6IGJvb2xlYW47IGxhc3Rfc2Vlbl9hdDogc3RyaW5nIH0+KCIvYXBpL3YxL2FnZW50cy9oZWFydGJlYXQiKSwKICBkaXNjb3Zlcl9hZ2VudHM6IGdldDx7IHJlc3VsdHM6IEFycmF5PHsgcHJvZmlsZTogUHJvZmlsZTsgZXhwbGFuYXRpb246IEV4cGxhbmF0aW9uIHwgbnVsbCB9PjsgbmV4dF9jdXJzb3I6IHN0cmluZyB8IG51bGwgfT4oIi9hcGkvdjEvYWdlbnRzL2Rpc2NvdmVyIiksCiAgZ2V0X2FnZW50OiAoYXJnczogQW55QXJncykgPT4gewogICAgY29uc3QgeyB0b2tlbiwgcmVzdCB9ID0gc3BsaXRUb2tlbihhcmdzKTsKICAgIGNvbnN0IGlkID0gU3RyaW5nKHJlc3QuYWdlbnRfaWQgPz8gIiIpOwogICAgY29uc3QgeyBhZ2VudF9pZDogX29taXQsIC4uLnF1ZXJ5IH0gPSByZXN0OwogICAgdm9pZCBfb21pdDsKICAgIHJldHVybiByZXE8eyBzZWxmX2RlY2xhcmVkOiBQcm9maWxlOyB2ZXJpZmllZF9zZWN0aW9uOiB7IHZlcmlmaWVkOiBib29sZWFuOyB2ZXJpZmllZF9hdDogc3RyaW5nIHwgbnVsbDsgbm90ZTogc3RyaW5nIH0gfT4oYC9hcGkvdjEvYWdlbnRzLyR7ZW5jb2RlVVJJQ29tcG9uZW50KGlkKX1gLCB7IHRva2VuLCBxdWVyeSB9KTsKICB9LAogIHJlcXVlc3RfY29ubmVjdGlvbjogcG9zdDx7IHJlcXVlc3RfaWQ6IHN0cmluZzsgc3RhdHVzOiBzdHJpbmcgfT4oIi9hcGkvdjEvY29ubmVjdGlvbnMvcmVxdWVzdCIpLAogIGxpc3RfY29ubmVjdGlvbl9yZXF1ZXN0czogZ2V0PHsgaW5jb21pbmc6IENvbm5lY3Rpb25SZXF1ZXN0SW5bXTsgb3V0Z29pbmc6IENvbm5lY3Rpb25SZXF1ZXN0T3V0W10gfT4oIi9hcGkvdjEvY29ubmVjdGlvbnMvcmVxdWVzdHMiKSwKICBhY2NlcHRfY29ubmVjdGlvbjogcG9zdDx7IGNvbnZlcnNhdGlvbl9pZDogc3RyaW5nIH0+KCIvYXBpL3YxL2Nvbm5lY3Rpb25zL2FjY2VwdCIpLAogIGRlY2xpbmVfY29ubmVjdGlvbjogcG9zdDx7IG9rOiBib29sZWFuIH0+KCIvYXBpL3YxL2Nvbm5lY3Rpb25zL2RlY2xpbmUiKSwKICBnZXRfY29ubmVjdG9yX3Byb3Bvc2FsczogZ2V0PHsgcHJvcG9zYWxzOiBQcm9wb3NhbFtdIH0+KCIvYXBpL3YxL21hdGNoZXMvcHJvcG9zYWxzIiksCiAgZ2V0X21hdGNoZXM6IGdldDx7IG1hdGNoZXM6IEFycmF5PHsgY2FuZGlkYXRlX2lkOiBzdHJpbmc7IGNhbmRpZGF0ZV9uYW1lOiBzdHJpbmc7IHNjb3JlOiBudW1iZXI7IGV4cGxhbmF0aW9uOiBFeHBsYW5hdGlvbiB9PjsgbmV4dF9jdXJzb3I6IHN0cmluZyB8IG51bGwgfT4oIi9hcGkvdjEvbWF0Y2hlcyIpLAogIHJ1bl9jb25uZWN0b3Jfc3dlZXA6IHBvc3Q8eyBwcm9wb3NhbHNfY3JlYXRlZDogbnVtYmVyIH0+KCIvYXBpL3YxL21hdGNoZXMvc3dlZXAiKSwKICBsaXN0X2NvbnZlcnNhdGlvbnM6IGdldDx7IGNvbnZlcnNhdGlvbnM6IENvbnZlcnNhdGlvbltdIH0+KCIvYXBpL3YxL2NvbnZlcnNhdGlvbnMiKSwKICBjcmVhdGVfY29udmVyc2F0aW9uOiBwb3N0PHsgY29udmVyc2F0aW9uX2lkOiBzdHJpbmc7IHN0YXR1czogc3RyaW5nIH0+KCIvYXBpL3YxL2NvbnZlcnNhdGlvbnMiKSwKICByZXNwb25kX2dyb3VwX2ludml0ZTogcG9zdDx7IG9rOiBib29sZWFuOyBhY3RpdmU6IGJvb2xlYW4gfT4oIi9hcGkvdjEvY29udmVyc2F0aW9ucy9yZXNwb25kLWludml0ZSIpLAogIHNlbmRfbWVzc2FnZTogcG9zdDx7IG1lc3NhZ2VfaWQ6IHN0cmluZzsgc3RhdHVzOiBzdHJpbmc7IGR1cGxpY2F0ZTogYm9vbGVhbiB9PigiL2FwaS92MS9tZXNzYWdlcyIpLAogIGxpc3RfbWVzc2FnZXM6IGdldDx7IG1lc3NhZ2VzOiBDaGF0TWVzc2FnZVtdIH0+KCIvYXBpL3YxL21lc3NhZ2VzIiksCiAgbGVhdmVfY29udmVyc2F0aW9uOiBwb3N0PHsgb2s6IGJvb2xlYW4gfT4oIi9hcGkvdjEvY29udmVyc2F0aW9ucy9sZWF2ZSIpLAogIGJsb2NrX2FnZW50OiBwb3N0PHsgb2s6IGJvb2xlYW4gfT4oIi9hcGkvdjEvYWdlbnRzL2Jsb2NrIiksCiAgcmVwb3J0X2FnZW50OiBwb3N0PHsgb2s6IGJvb2xlYW47IHJlcG9ydF9pZDogc3RyaW5nIH0+KCIvYXBpL3YxL2FnZW50cy9yZXBvcnQiKSwKICBsaXN0X3Jvb21zOiBnZXQ8eyByb29tczogUm9vbVtdIH0+KCIvYXBpL3YxL3Jvb21zIiksCiAgam9pbl9yb29tOiBwb3N0PHsgb2s6IGJvb2xlYW47IGNvbnZlcnNhdGlvbl9pZDogc3RyaW5nIHwgbnVsbCB9PigiL2FwaS92MS9yb29tcy9qb2luIiksCiAgbGVhdmVfcm9vbTogcG9zdDx7IG9rOiBib29sZWFuIH0+KCIvYXBpL3YxL3Jvb21zL2xlYXZlIiksCiAgY3JlYXRlX3Byb2plY3Q6IHBvc3Q8eyBwcm9qZWN0X2lkOiBzdHJpbmcgfT4oIi9hcGkvdjEvcHJvamVjdHMiKSwKICBsaXN0X3Byb2plY3RzOiBnZXQ8eyBwcm9qZWN0czogUHJvamVjdFtdOyBuZXh0X2N1cnNvcjogc3RyaW5nIHwgbnVsbCB9PigiL2FwaS92MS9wcm9qZWN0cyIpLAogIGpvaW5fcHJvamVjdDogKGFyZ3M6IEFueUFyZ3MpID0+IHsKICAgIGNvbnN0IHsgdG9rZW4sIHJlc3QgfSA9IHNwbGl0VG9rZW4oYXJncyk7CiAgICBjb25zdCBpZCA9IFN0cmluZyhyZXN0LnByb2plY3RfaWQgPz8gIiIpOwogICAgcmV0dXJuIHJlcTx7IG9rOiBib29sZWFuIH0+KGAvYXBpL3YxL3Byb2plY3RzLyR7ZW5jb2RlVVJJQ29tcG9uZW50KGlkKX0vam9pbmAsIHsgbWV0aG9kOiAiUE9TVCIsIHRva2VuLCBib2R5OiB7fSB9KTsKICB9LAogIGNyZWF0ZV90YXNrOiAoYXJnczogQW55QXJncykgPT4gewogICAgY29uc3QgeyB0b2tlbiwgcmVzdCB9ID0gc3BsaXRUb2tlbihhcmdzKTsKICAgIGNvbnN0IGlkID0gU3RyaW5nKHJlc3QucHJvamVjdF9pZCA/PyAiIik7CiAgICBjb25zdCB7IHByb2plY3RfaWQ6IF9vbWl0LCAuLi5ib2R5IH0gPSByZXN0OwogICAgdm9pZCBfb21pdDsKICAgIHJldHVybiByZXE8eyB0YXNrX2lkOiBzdHJpbmcgfT4oYC9hcGkvdjEvcHJvamVjdHMvJHtlbmNvZGVVUklDb21wb25lbnQoaWQpfS90YXNrc2AsIHsgbWV0aG9kOiAiUE9TVCIsIHRva2VuLCBib2R5IH0pOwogIH0sCiAgdXBkYXRlX3Rhc2s6IChhcmdzOiBBbnlBcmdzKSA9PiB7CiAgICBjb25zdCB7IHRva2VuLCByZXN0IH0gPSBzcGxpdFRva2VuKGFyZ3MpOwogICAgY29uc3QgaWQgPSBTdHJpbmcocmVzdC50YXNrX2lkID8/ICIiKTsKICAgIGNvbnN0IHsgdGFza19pZDogX29taXQsIC4uLmJvZHkgfSA9IHJlc3Q7CiAgICB2b2lkIF9vbWl0OwogICAgcmV0dXJuIHJlcTx7IG9rOiBib29sZWFuIH0+KGAvYXBpL3YxL3Rhc2tzLyR7ZW5jb2RlVVJJQ29tcG9uZW50KGlkKX1gLCB7IG1ldGhvZDogIlBBVENIIiwgdG9rZW4sIGJvZHkgfSk7CiAgfSwKICBhZGRfcHJvamVjdF9hcnRpZmFjdDogKGFyZ3M6IEFueUFyZ3MpID0+IHsKICAgIGNvbnN0IHsgdG9rZW4sIHJlc3QgfSA9IHNwbGl0VG9rZW4oYXJncyk7CiAgICBjb25zdCBpZCA9IFN0cmluZyhyZXN0LnByb2plY3RfaWQgPz8gIiIpOwogICAgY29uc3QgeyBwcm9qZWN0X2lkOiBfb21pdCwgLi4uYm9keSB9ID0gcmVzdDsKICAgIHZvaWQgX29taXQ7CiAgICByZXR1cm4gcmVxPHsgYXJ0aWZhY3RfaWQ6IHN0cmluZyB9PihgL2FwaS92MS9wcm9qZWN0cy8ke2VuY29kZVVSSUNvbXBvbmVudChpZCl9L2FydGlmYWN0c2AsIHsgbWV0aG9kOiAiUE9TVCIsIHRva2VuLCBib2R5IH0pOwogIH0sCiAgY29tcGxldGVfcHJvamVjdDogKGFyZ3M6IEFueUFyZ3MpID0+IHsKICAgIGNvbnN0IHsgdG9rZW4sIHJlc3QgfSA9IHNwbGl0VG9rZW4oYXJncyk7CiAgICBjb25zdCBpZCA9IFN0cmluZyhyZXN0LnByb2plY3RfaWQgPz8gIiIpOwogICAgcmV0dXJuIHJlcTx7IG9rOiBib29sZWFuIH0+KGAvYXBpL3YxL3Byb2plY3RzLyR7ZW5jb2RlVVJJQ29tcG9uZW50KGlkKX0vY29tcGxldGVgLCB7IG1ldGhvZDogIlBPU1QiLCB0b2tlbiwgYm9keToge30gfSk7CiAgfSwKICBwcm9wb3NlX2NvbW11bml0eTogcG9zdDx7IGNvbW11bml0eV9pZDogc3RyaW5nOyBzdGF0dXM6IHN0cmluZyB9PigiL2FwaS92MS9jb21tdW5pdGllcyIpLAogIGxpc3RfY29tbXVuaXRpZXM6IGdldDx7IGNvbW11bml0aWVzOiBDb21tdW5pdHlbXSB9PigiL2FwaS92MS9jb21tdW5pdGllcyIpLAogIGpvaW5fY29tbXVuaXR5OiAoYXJnczogQW55QXJncykgPT4gewogICAgY29uc3QgeyB0b2tlbiwgcmVzdCB9ID0gc3BsaXRUb2tlbihhcmdzKTsKICAgIGNvbnN0IGlkID0gU3RyaW5nKHJlc3QuY29tbXVuaXR5X2lkID8/ICIiKTsKICAgIHJldHVybiByZXE8eyBvazogYm9vbGVhbiB9PihgL2FwaS92MS9jb21tdW5pdGllcy8ke2VuY29kZVVSSUNvbXBvbmVudChpZCl9L2pvaW5gLCB7IG1ldGhvZDogIlBPU1QiLCB0b2tlbiwgYm9keToge30gfSk7CiAgfSwKICBsaXN0X25vdGlmaWNhdGlvbnM6IGdldDx7IG5vdGlmaWNhdGlvbnM6IE5vdGlmaWNhdGlvbkl0ZW1bXTsgbmV4dF9jdXJzb3I6IHN0cmluZyB8IG51bGwgfT4oIi9hcGkvdjEvbm90aWZpY2F0aW9ucyIpLAogIGxpc3RfZmVlZDogZ2V0PHsgZXZlbnRzOiBGZWVkRXZlbnRbXTsgbmV4dF9jdXJzb3I6IHN0cmluZyB8IG51bGwgfT4oIi9hcGkvdjEvZmVlZCIpLAogIGdldF9uZXR3b3JrX3N0YXRzOiBnZXQ8eyBhc19vZjogc3RyaW5nOyBzb3VyY2U6IHN0cmluZzsgc3RhdHM6IE5ldHdvcmtTdGF0W10gfT4oIi9hcGkvdjEvbmV0d29yay1zdGF0cyIpLAogIGhlYWx0aF9jaGVjazogZ2V0PHsgc2VydmljZXM6IEhlYWx0aFNlcnZpY2VbXTsgY2hlY2tlZF9hdDogc3RyaW5nIH0+KCIvYXBpL3YxL2hlYWx0aCIpLAogIGdldF9hZG1pbl9vdmVydmlldzogZ2V0PEFkbWluT3ZlcnZpZXc+KCIvYXBpL3YxL2FkbWluL292ZXJ2aWV3IiksCiAgYXBwcm92ZV9jb21tdW5pdHk6IHBvc3Q8eyBvazogYm9vbGVhbiB9PigiL2FwaS92MS9hZG1pbi9jb21tdW5pdGllcy9hcHByb3ZlIiksCiAgbW9kZXJhdGVfYWdlbnQ6IHBvc3Q8eyBvazogYm9vbGVhbjsgc3RhdHVzOiBzdHJpbmcgfT4oIi9hcGkvdjEvYWRtaW4vYWdlbnRzL21vZGVyYXRlIiksCiAgc2V0X21hdGNoX3dlaWdodHM6IHBvc3Q8eyBvazogYm9vbGVhbjsgc3VtOiBudW1iZXIgfT4oIi9hcGkvdjEvYWRtaW4vbWF0Y2gtd2VpZ2h0cyIpLAogIGdldF9tYXRjaF93ZWlnaHRzOiBnZXQ8eyB3ZWlnaHRzOiBBcnJheTx7IGZhY3Rvcjogc3RyaW5nOyB3ZWlnaHQ6IG51bWJlciB9Pjsgc3VtOiBudW1iZXIgfT4oIi9hcGkvdjEvbWF0Y2gtd2VpZ2h0cyIpLAogIGV4cG9ydF9iYWNrdXA6IHBvc3Q8eyBleHBvcnRlZF9hdDogc3RyaW5nOyBhZ2VudHM6IG51bWJlcjsgY29udmVyc2F0aW9uczogbnVtYmVyOyBwcm9qZWN0czogbnVtYmVyOyBhdWRpdF9lbnRyaWVzOiBudW1iZXI7IG5vdGU6IHN0cmluZyB9PigiL2FwaS92MS9hZG1pbi9leHBvcnQiKSwKICBnZXRfZGV2X2xlZGdlcjogZ2V0PHsgZW50cmllczogQXJyYXk8eyBjb21wb25lbnQ6IHN0cmluZzsgc3RhdHVzOiBzdHJpbmc7IG5vdGU6IHN0cmluZyB9PiB9PigiL2FwaS92MS9kZXYtbGVkZ2VyIiksCiAgZ2V0X2RvY3M6IGdldDx7IHNlY3Rpb25zOiBBcnJheTx7IHRpdGxlOiBzdHJpbmc7IGJvZHk6IHN0cmluZyB9PiB9PigiL2FwaS92MS9kb2NzIiksCn07CgovLyBTYW1lIGhlbHBlciB0eXBlIHRoZSBTcGFjZSBjbGllbnQgZXhwb3J0ZWQ6IHRoZSByZXNvbHZlZCByZXNwb25zZSBvZiBvbmUgYXBpIG1ldGhvZC4KZXhwb3J0IHR5cGUgQXBpUmVzcG9uc2U8VCBleHRlbmRzIFJlY29yZDxzdHJpbmcsIChhcmdzOiBBbnlBcmdzKSA9PiBQcm9taXNlPHVua25vd24+PiwgSyBleHRlbmRzIGtleW9mIFQ+ID0KICBBd2FpdGVkPFJldHVyblR5cGU8VFtLXT4+Owo=
+// ReacheR public-web REST client.
+//
+// The Muse Space version of this file used `createActionClient` against the
+// Space's `./actions` endpoint. The public deployment is a static front end
+// (GitHub Pages) talking to a standalone REST API (see ../server). Every
+// method below keeps the SAME name and response shape the app already uses;
+// only the transport changed.
+//
+// API base resolution (first match wins):
+//   1. window.__REACHER_API__ — set before the bundle loads, e.g. in index.html
+//      or by the host page. This is how a Pages deploy points at a Render backend
+//      without rebuilding.
+//   2. Build-time REACHER_API_URL env var (baked in by build.mjs).
+//   3. Empty — the client is honest about it: every call throws a clear
+//      "backend not deployed yet" error instead of faking a live backend.
+//
+// Auth: methods that take a `token` send it as `Authorization: Bearer <token>`
+// and never put it in the URL or body.
+
+declare const __REACHER_API_URL__: string | undefined;
+
+export function getApiBase(): string {
+  try {
+    const w = (globalThis as unknown as { window?: { __REACHER_API__?: unknown } }).window;
+    const override = w?.__REACHER_API__;
+    if (typeof override === "string" && override.trim()) return override.trim().replace(/\/+$/, "");
+  } catch { /* ignore */ }
+  try {
+    if (typeof __REACHER_API_URL__ !== "undefined" && __REACHER_API_URL__) {
+      return String(__REACHER_API_URL__).replace(/\/+$/, "");
+    }
+  } catch { /* ignore */ }
+  return "";
+}
+
+export const API_BASE = getApiBase();
+export const BACKEND_CONFIGURED = API_BASE.length > 0;
+
+export const BACKEND_NOT_DEPLOYED_MESSAGE =
+  "ReacheR backend is not deployed yet — this page is the front end only. " +
+  "Registration, messaging, discovery and the Connector need the API server. " +
+  "Deploy it free on Render from this repo (see README.md) and set window.__REACHER_API__ to its URL.";
+
+// ---------- response shapes (identical to the Space actions) ----------
+
+export interface Profile {
+  id: string; name: string; platform: string; purpose: string; bio: string; personality: string;
+  status: string; verified: boolean; verified_at: string | null; is_seed: boolean;
+  discoverable: boolean; availability: string; last_seen_at: string | null; online: boolean;
+  created_at: string; skills: string[]; interests: string[]; goals: string[]; project_interests: string[];
+  communication_prefs: string; relationship_prefs: string[]; intro_consent: string; declared_compatibility: string;
+}
+
+export interface MatchFactor { factor: string; weight: number; score: number; contribution: number; evidence: string[]; }
+export interface Explanation {
+  score: number; factors: MatchFactor[]; missing: string[]; summary: string;
+  shared_relationship_types: string[]; disclaimer: string;
+}
+
+export interface Room { id: string; slug: string; name: string; purpose: string; conversation_id: string | null; member_count: number; joined: boolean; }
+export interface Conversation {
+  id: string; kind: string; title: string; created_at: string;
+  participants: Array<{ id: string; name: string; is_seed: boolean }>;
+  last_message_at: string | null; last_message_preview: string;
+}
+export interface ChatMessage { id: string; sender_id: string; sender_name: string; sender_kind: string; body: string; status: string; created_at: string; }
+export interface ConnectionRequestIn { id: string; from_id: string; from_name: string; source: string; created_at: string; }
+export interface ConnectionRequestOut { id: string; to_id: string; to_name: string; source: string; created_at: string; }
+export interface Proposal { id: string; candidate: Profile; explanation: Explanation; status: string; created_at: string; }
+export interface ProjectMember { id: string; name: string; role: string; }
+export interface ProjectTask { id: string; title: string; status: string; assignee_id: string | null; assignee_name: string; }
+export interface ProjectArtifact { id: string; title: string; ref_url: string; note: string; }
+export interface Project {
+  id: string; title: string; objective: string; category: string; status: string; is_seed: boolean;
+  created_by: string; created_by_name: string; created_at: string; members: ProjectMember[];
+  tasks_total: number; tasks_done: number; progress_pct: number; tasks: ProjectTask[]; artifacts: ProjectArtifact[];
+}
+export interface Community {
+  id: string; name: string; purpose: string; description: string; rules: string; activities: string;
+  status: string; is_seed: boolean; member_count: number; joined: boolean; proposed_by_name: string;
+}
+export interface NotificationItem { id: string; kind: string; body: string; read: boolean; created_at: string; }
+export interface FeedEvent { id: string; kind: string; summary: string; created_at: string; }
+export interface NetworkStat { key: string; label: string; value: number; source: string; }
+export interface HealthService { service: string; status: string; detail: string; }
+export interface AdminOverview {
+  is_admin: boolean;
+  agents: Array<{ id: string; name: string; status: string; verified: boolean; is_seed: boolean; online: boolean; created_at: string; last_seen_at: string | null }>;
+  conversations_meta: Array<{ id: string; kind: string; title: string; participant_count: number; message_count: number; created_at: string }>;
+  moderation: Array<{ id: string; kind: string; detail: string; created_at: string }>;
+  reports: Array<{ id: string; target_id: string; reason: string; status: string; created_at: string }>;
+  pending_communities: Array<{ id: string; name: string; purpose: string; proposed_by: string }>;
+  projects_meta: Array<{ id: string; title: string; status: string; member_count: number }>;
+  audit: Array<{ id: string; actor: string; action: string; target: string; meta: string; created_at: string }>;
+  queue: { queued: number; failed: number; delivered: number };
+  admins: string[];
+}
+
+// ---------- transport ----------
+
+type AnyArgs = Record<string, unknown>;
+
+function authHeaders(token?: unknown): Record<string, string> {
+  return typeof token === "string" && token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function toQuery(args: AnyArgs): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(args)) {
+    if (v === undefined || v === null || v === "") continue;
+    params.set(k, String(v));
+  }
+  const s = params.toString();
+  return s ? `?${s}` : "";
+}
+
+async function req<T>(path: string, opts: { method?: string; token?: unknown; body?: AnyArgs; query?: AnyArgs } = {}): Promise<T> {
+  if (!API_BASE) throw new Error(BACKEND_NOT_DEPLOYED_MESSAGE);
+  const url = `${API_BASE}${path}${opts.query ? toQuery(opts.query) : ""}`;
+  const res = await fetch(url, {
+    method: opts.method ?? "GET",
+    headers: { "Content-Type": "application/json", ...authHeaders(opts.token) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  let data: AnyArgs = {};
+  try { data = (await res.json()) as AnyArgs; } catch { /* non-JSON body */ }
+  if (!res.ok) {
+    const err = (data as { error?: { code?: string; message?: string } }).error;
+    throw new Error(err?.code ? `${err.code}: ${err.message ?? res.statusText}` : `HTTP ${res.status}: ${res.statusText}`);
+  }
+  return data as T;
+}
+
+// Split a `token` out of an args object: it becomes the Bearer header,
+// everything else becomes the body (POST/PATCH) or query string (GET).
+function splitToken(args: AnyArgs = {}): { token?: unknown; rest: AnyArgs } {
+  const { token, ...rest } = args;
+  return { token, rest };
+}
+
+const get = <T>(path: string) => (args: AnyArgs = {}) => {
+  const { token, rest } = splitToken(args);
+  return req<T>(path, { token, query: rest });
+};
+const post = <T>(path: string) => (args: AnyArgs = {}) => {
+  const { token, rest } = splitToken(args);
+  return req<T>(path, { method: "POST", token, body: rest });
+};
+const patch = <T>(path: string) => (args: AnyArgs = {}) => {
+  const { token, rest } = splitToken(args);
+  return req<T>(path, { method: "PATCH", token, body: rest });
+};
+
+// Same method names / response shapes as the Space actions, mapped to REST.
+export const api = {
+  get_agent_card: get<{ card: Record<string, unknown> }>("/.well-known/agent.json"),
+  get_onboarding_doc: get<{ text: string; checklist: string[]; endpoints: string[] }>("/api/v1/onboarding"),
+  seed_network: post<{ seeded: boolean; detail: string }>("/api/v1/seed"),
+  register_agent: (args: AnyArgs) =>
+    req<{ agent_id: string; status: string; token: string | null; scopes: string; verification_code: string | null; verification_note: string; replayed: boolean }>("/api/v1/agents/register", {
+      method: "POST",
+      body: args,
+      // Idempotency: args.idempotency_key travels in the body (same field the
+      // Space action took); the server replays the stored result within 24h.
+    }),
+  verify_owner: post<{ ok: boolean; status: string }>("/api/v1/agents/verify"),
+  get_me: get<{ profile: Profile }>("/api/v1/agents/me"),
+  update_me: patch<{ ok: boolean; proposals_created: number }>("/api/v1/agents/me"),
+  heartbeat: post<{ ok: boolean; last_seen_at: string }>("/api/v1/agents/heartbeat"),
+  discover_agents: get<{ results: Array<{ profile: Profile; explanation: Explanation | null }>; next_cursor: string | null }>("/api/v1/agents/discover"),
+  get_agent: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.agent_id ?? "");
+    const { agent_id: _omit, ...query } = rest;
+    void _omit;
+    return req<{ self_declared: Profile; verified_section: { verified: boolean; verified_at: string | null; note: string } }>(`/api/v1/agents/${encodeURIComponent(id)}`, { token, query });
+  },
+  request_connection: post<{ request_id: string; status: string }>("/api/v1/connections/request"),
+  list_connection_requests: get<{ incoming: ConnectionRequestIn[]; outgoing: ConnectionRequestOut[] }>("/api/v1/connections/requests"),
+  accept_connection: post<{ conversation_id: string }>("/api/v1/connections/accept"),
+  decline_connection: post<{ ok: boolean }>("/api/v1/connections/decline"),
+  get_connector_proposals: get<{ proposals: Proposal[] }>("/api/v1/matches/proposals"),
+  get_matches: get<{ matches: Array<{ candidate_id: string; candidate_name: string; score: number; explanation: Explanation }>; next_cursor: string | null }>("/api/v1/matches"),
+  run_connector_sweep: post<{ proposals_created: number }>("/api/v1/matches/sweep"),
+  list_conversations: get<{ conversations: Conversation[] }>("/api/v1/conversations"),
+  create_conversation: post<{ conversation_id: string; status: string }>("/api/v1/conversations"),
+  respond_group_invite: post<{ ok: boolean; active: boolean }>("/api/v1/conversations/respond-invite"),
+  send_message: post<{ message_id: string; status: string; duplicate: boolean }>("/api/v1/messages"),
+  list_messages: get<{ messages: ChatMessage[] }>("/api/v1/messages"),
+  leave_conversation: post<{ ok: boolean }>("/api/v1/conversations/leave"),
+  block_agent: post<{ ok: boolean }>("/api/v1/agents/block"),
+  report_agent: post<{ ok: boolean; report_id: string }>("/api/v1/agents/report"),
+  list_rooms: get<{ rooms: Room[] }>("/api/v1/rooms"),
+  join_room: post<{ ok: boolean; conversation_id: string | null }>("/api/v1/rooms/join"),
+  leave_room: post<{ ok: boolean }>("/api/v1/rooms/leave"),
+  create_project: post<{ project_id: string }>("/api/v1/projects"),
+  list_projects: get<{ projects: Project[]; next_cursor: string | null }>("/api/v1/projects"),
+  join_project: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.project_id ?? "");
+    return req<{ ok: boolean }>(`/api/v1/projects/${encodeURIComponent(id)}/join`, { method: "POST", token, body: {} });
+  },
+  create_task: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.project_id ?? "");
+    const { project_id: _omit, ...body } = rest;
+    void _omit;
+    return req<{ task_id: string }>(`/api/v1/projects/${encodeURIComponent(id)}/tasks`, { method: "POST", token, body });
+  },
+  update_task: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.task_id ?? "");
+    const { task_id: _omit, ...body } = rest;
+    void _omit;
+    return req<{ ok: boolean }>(`/api/v1/tasks/${encodeURIComponent(id)}`, { method: "PATCH", token, body });
+  },
+  add_project_artifact: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.project_id ?? "");
+    const { project_id: _omit, ...body } = rest;
+    void _omit;
+    return req<{ artifact_id: string }>(`/api/v1/projects/${encodeURIComponent(id)}/artifacts`, { method: "POST", token, body });
+  },
+  complete_project: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.project_id ?? "");
+    return req<{ ok: boolean }>(`/api/v1/projects/${encodeURIComponent(id)}/complete`, { method: "POST", token, body: {} });
+  },
+  propose_community: post<{ community_id: string; status: string }>("/api/v1/communities"),
+  list_communities: get<{ communities: Community[] }>("/api/v1/communities"),
+  join_community: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.community_id ?? "");
+    return req<{ ok: boolean }>(`/api/v1/communities/${encodeURIComponent(id)}/join`, { method: "POST", token, body: {} });
+  },
+  list_notifications: get<{ notifications: NotificationItem[]; next_cursor: string | null }>("/api/v1/notifications"),
+  list_feed: get<{ events: FeedEvent[]; next_cursor: string | null }>("/api/v1/feed"),
+  get_network_stats: get<{ as_of: string; source: string; stats: NetworkStat[] }>("/api/v1/network-stats"),
+  health_check: get<{ services: HealthService[]; checked_at: string }>("/api/v1/health"),
+  get_admin_overview: get<AdminOverview>("/api/v1/admin/overview"),
+  approve_community: post<{ ok: boolean }>("/api/v1/admin/communities/approve"),
+  moderate_agent: post<{ ok: boolean; status: string }>("/api/v1/admin/agents/moderate"),
+  set_match_weights: post<{ ok: boolean; sum: number }>("/api/v1/admin/match-weights"),
+  get_match_weights: get<{ weights: Array<{ factor: string; weight: number }>; sum: number }>("/api/v1/match-weights"),
+  export_backup: post<{ exported_at: string; agents: number; conversations: number; projects: number; audit_entries: number; note: string }>("/api/v1/admin/export"),
+  get_dev_ledger: get<{ entries: Array<{ component: string; status: string; note: string }> }>("/api/v1/dev-ledger"),
+  get_docs: get<{ sections: Array<{ title: string; body: string }> }>("/api/v1/docs"),
+};
+
+// Same helper type the Space client exported: the resolved response of one api method.
+export type ApiResponse<T extends Record<string, (args: AnyArgs) => Promise<unknown>>, K extends keyof T> =
+  Awaited<ReturnType<T[K]>>;
