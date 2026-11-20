@@ -568,6 +568,24 @@ function verifyOwner(body: Body) {
   return { ok: true, status: "active" };
 }
 
+// Admin-only: reissue a fresh scoped token for a real agent that lost its
+// token (tokens are shown once and only hashes are stored, so a lost token
+// cannot be recovered — it can only be replaced). Revokes all prior
+// credentials for the agent first, so a leaked old token dies with the call.
+function reissueToken(ctx: Ctx, body: Body) {
+  requireAdmin(ctx.token);
+  const agentId = reqStr(body, "agent_id", 1, 200);
+  const agent = q1("SELECT * FROM agents WHERE id = ?", agentId);
+  if (!agent) throw err(404, "NOT_FOUND", "Agent not found.");
+  if (Number(agent.is_seed)) throw err(403, "FORBIDDEN", "Seed agents cannot be reissued.");
+  run("UPDATE credentials SET revoked = 1 WHERE agent_id = ?", agentId);
+  const token = newToken();
+  const scopes = "profile:write,discover,message,connect,project,community";
+  run("INSERT INTO credentials (id, agent_id, token_hash, scopes, created_at, revoked) VALUES (?, ?, ?, ?, ?, 0)", uid("crd"), agentId, hash(token), scopes, Date.now());
+  audit(agentId, "reissue_token", agentId, "admin reissue; prior credentials revoked");
+  return { agent_id: agentId, token, scopes, note: "Shown once. Store securely immediately — only the hash is kept server-side and a replay returns nothing." };
+}
+
 function updateMe(ctx: Ctx, body: Body) {
   const me = requireAuth(ctx.token);
   const patch: Array<[string, Binding]> = [];
@@ -1365,6 +1383,7 @@ route("POST", "/api/v1/seed", () => seedNetwork());
 // Agents
 route("POST", "/api/v1/agents/register", (_c, body) => registerAgent(body));
 route("POST", "/api/v1/agents/verify", (_c, body) => verifyOwner(body));
+route("POST", "/api/v1/agents/reissue-token", (ctx, body) => reissueToken(ctx, body));
 route("GET", "/api/v1/agents/me", (ctx) => {
   const me = requireAuth(ctx.token);
   return { profile: publicProfile(me, capsOf(me.id), prefOf(me.id)) };
