@@ -1,1 +1,56 @@
-ewogICJsb2NrZmlsZVZlcnNpb24iOiAyLAogICJjb25maWdWZXJzaW9uIjogMSwKICAid29ya3NwYWNlcyI6IHsKICAgICIiOiB7CiAgICAgICJuYW1lIjogInJlYWNoZXItZnJvbnRlbmQiLAogICAgICAiZGVwZW5kZW5jaWVzIjogewogICAgICAgICJAdGFuc3RhY2svcmVhY3QtcXVlcnkiOiAiNS4xMDAuMTAiLAogICAgICAgICJyZWFjdCI6ICIxOS4yLjUiLAogICAgICAgICJyZWFjdC1kb20iOiAiMTkuMi41IiwKICAgICAgfSwKICAgICAgImRldkRlcGVuZGVuY2llcyI6IHsKICAgICAgICAiQHR5cGVzL2J1biI6ICIxLjQuMiIsCiAgICAgICAgIkB0eXBlcy9yZWFjdCI6ICIxOS4yLjE0IiwKICAgICAgICAiQHR5cGVzL3JlYWN0LWRvbSI6ICIxOS4yLjMiLAogICAgICAgICJidW4tcGx1Z2luLXRhaWx3aW5kIjogIjAuMC4xNSIsCiAgICAgICAgInRhaWx3aW5kY3NzIjogIjQuMS4xMyIsCiAgICAgICAgInRhaWx3aW5kY3NzLXNhZmUtYXJlYSI6ICIxLjMuMCIsCiAgICAgICAgInR5cGVzY3JpcHQiOiAiNS42LjMiLAogICAgICB9LAogICAgfSwKICB9LAogICJwYWNrYWdlcyI6IHsKICAgICJAdGFuc3RhY2svcXVlcnktY29yZSI6IFsiQHRhbnN0YWNrL3F1ZXJ5LWNvcmVANS4xMDAuMTAiLCAiIiwge30sICJzaGE1MTItOFVSMHlKUitHaVE0MG0zbFBoVXIweGJmQXVwZTZHU1Fpa3NTQlNhOVNNMk5qZXpGeXhYQ0lBNjkvbHo4Y1NvTktaTHJ3MS9Qa3RJeVFCSmNWZU1pM3c9PSJdLAoKICAgICJAdGFuc3RhY2svcmVhY3QtcXVlcnkiOiBbIkB0YW5zdGFjay9yZWFjdC1xdWVyeUA1LjEwMC4xMCIsICIiLCB7ICJkZXBlbmRlbmNpZXMiOiB7ICJAdGFuc3RhY2svcXVlcnktY29yZSI6ICI1LjEwMC4xMCIgfSwgInBlZXJEZXBlbmRlbmNpZXMiOiB7ICJyZWFjdCI6ICJeMTggfHwgXjE5IiB9IH0sICJzaGE1MTItRkxhWmYyUkNyQS9aZ3A0YWl1NXRHM1R5YXNUUk83YVo5OXNreFFwcjNIZy96WE9odTZ5cTVGWkNZUS90UmFKdE05eWxub0s4dEZLN1BvbFhRYWR2NlE9PSJdLAoKICAgICJAdHlwZXMvYnVuIjogWyJAdHlwZXMvYnVuQDEuNC4yIiwgIiIsIHsgImRlcGVuZGVuY2llcyI6IHsgImJ1bi10eXBlcyI6ICIxLjQuMiIgfSB9LCAic2hhNTEyLUdpbW90Tm43K1pWMHVWQXJJdEJicmlac1Ixb05mMCtXVHpQa2RjRnJ6U2hJN2sybm9yTDB1ekVhSlQ4VDMzZFdyN08vYzlaRHVBRlFyY3RLQ2k3Mm9RPT0iXSwKCiAgICAiQHR5cGVzL25vZGUiOiBbIkB0eXBlcy9ub2RlQDI2LjYuNiIsICIiLCB7ICJkZXBlbmRlbmNpZXMiOiB7ICJ1bmRpY2ktdHlwZXMiOiAifjguOS4wIiB9IH0sICJzaGE1MTItTXpRais4S3gzWEk0ME9tVUFFNlFvaDU4Wk1Oc3ROTk13bjJuZmQzcVdzZmU3bkROU3FKTnplczRuamh6NkFId3JTSE9mZlNMd1hVNnliNDc0UTRhb2c9PSJdLAoKICAgICJAdHlwZXMvcmVhY3QiOiBbIkB0eXBlcy9yZWFjdEAxOS4yLjE0IiwgIiIsIHsgImRlcGVuZGVuY2llcyI6IHsgImNzc3R5cGUiOiAiXjMuMi4yIiB9IH0sICJzaGE1MTItaWxjVEgvVW5pQ2tNZHRleGtvQ04wYkk3cE1jSkR2bVFGUHZ1UHZtRWFZQS9OU2ZGVEFnZFVTTEFvVmphUkptNys2UHZjTStxMXpZT3dTNHdUWU1GOXc9PSJdLAoKICAgICJAdHlwZXMvcmVhY3QtZG9tIjogWyJAdHlwZXMvcmVhY3QtZG9tQDE5LjIuMyIsICIiLCB7ICJwZWVyRGVwZW5kZW5jaWVzIjogeyAiQHR5cGVzL3JlYWN0IjogIl4xOS4yLjAiIH0gfSwgInNoYTUxMi1qcDJML2VZNmZuK0tnVlZRQU9xWUl0YkYwVlkvWUFwZTVNejJGMGF5a1NPOGd4MzFiWUNaeXZTZVl4Q0hLdnpIRzVlWmpjK3p5YVM1QnJCV3lhMitrUT09Il0sCgogICAgImJ1bi1wbHVnaW4tdGFpbHdpbmQiOiBbImJ1bi1wbHVnaW4tdGFpbHdpbmRAMC4wLjE1IiwgIiIsIHsgInBlZXJEZXBlbmRlbmNpZXMiOiB7ICJ0eXBlc2NyaXB0IjogIl41LjAuMCIgfSB9LCAic2hhNTEyLXF0QVhNTkdHNFIwVUdHSTh6V3JxbTJCN0JkWHF4NDh2dW5KWEJQemZET0hQQTVXa1JVWmRUU2JFN1RGd080akxoWXFTRTIzWU1Xc005TmhFNm92b2J3PT0iXSwKCiAgICAiYnVuLXR5cGVzIjogWyJidW4tdHlwZXNAMS40LjIiLCAiIiwgeyAiZGVwZW5kZW5jaWVzIjogeyAiQHR5cGVzL25vZGUiOiAiKiIgfSB9LCAic2hhNTEyLWJ4VjFGZ0s3eUJJempSZTV6Qm96SU00QmVtMTFaSmNDWFNyaldSRzNZV0x0OHlGRGVQdTRjTGpwZWJPOE92UGVJRTl0cmJ5UEY0ZnVqM0NpYTRGajN3PT0iXSwKCiAgICAiY3NzdHlwZSI6IFsiY3NzdHlwZUAzLjIuNCIsICIiLCB7fSwgInNoYTUxMi1Qb0thb1B6UWFwbkVvcVVTbkh4MXU2VzZrdThDVkVnS3NucG1telUzbTFud2tpZHBQQlE4Vi9acTIrYldOcnNPS29LTHdUR2RieDZ4RjdCWFAxekxWUT09Il0sCgogICAgInJlYWN0IjogWyJyZWFjdEAxOS4yLjUiLCAiIiwge30sICJzaGE1MTItbGxVSkx6ejF6VFVCcnNrdDJwd1pnTHE1OUFlbWlmSWZ0dzRhQjdKeE9xZjFIWTJGRGFHRHhnd3BBUFZ6SFUxa2RXYWJIN0ZhdVA0aTFvRWVlcjJXQ0E9PSJdLAoKICAgICJyZWFjdC1kb20iOiBbInJlYWN0LWRvbUAxOS4yLjUiLCAiIiwgeyAiZGVwZW5kZW5jaWVzIjogeyAic2NoZWR1bGVyIjogIl4wLjI3LjAiIH0sICJwZWVyRGVwZW5kZW5jaWVzIjogeyAicmVhY3QiOiAiXjE5LjIuNSIgfSB9LCAic2hhNTEyLUo1YkFaeitEWE1Nd1cvd1YzeHpLa2U1OUFmNkNIWTdHNHVZTE4xT3ZCY0tFc1dPczRwUUV4ajg2QkJLYW14bC9JazVieDl3aE9ydkJsU0RmV3pnU2FnPT0iXSwKCiAgICAic2NoZWR1bGVyIjogWyJzY2hlZHVsZXJAMC4yNy4wIiwgIiIsIHt9LCAic2hhNTEyLWVOditXclZiS3UxZjN2YllKVC94dGlGNXN5QTVIUElNdGY5SWdZL25LZzBzV3F6QVVFdnFZL3htN09jWmMvcWFmTHgvaU85RmdPbWVTQXA0djV0aS9RPT0iXSwKCiAgICAidGFpbHdpbmRjc3MiOiBbInRhaWx3aW5kY3NzQDQuMS4xMyIsICIiLCB7fSwgInNoYTUxMi1pK3ppZGZtVHF0d3F1ajRoTUV3ZGpzaFlZZ01iT3JQemI5YTBNM1pnTmEwSk1vWmVGQzZieFp2Tzh5cjhvelM2aXgyU0R6MCttdnJ5UGVCczJURkUrdz09Il0sCgogICAgInRhaWx3aW5kY3NzLXNhZmUtYXJlYSI6IFsidGFpbHdpbmRjc3Mtc2FmZS1hcmVhQDEuMy4wIiwgIiIsIHsgInBlZXJEZXBlbmRlbmNpZXMiOiB7ICJ0YWlsd2luZGNzcyI6ICJeNC4wLjAiIH0gfSwgInNoYTUxMi1Sb3huVzF6QWpCV0MzWEsrcm93N1FqNXRvUk1SbEtOTi9wM0ZMWGI2ZlRHS3hER1dUNkpQL21jTlgxeWYwOXhSZmljUTMwOGhid2llZGduaWVwU3AxUT09Il0sCgogICAgInR5cGVzY3JpcHQiOiBbInR5cGVzY3JpcHRANS42LjMiLCAiIiwgeyAiYmluIjogeyAidHNjIjogImJpbi90c2MiLCAidHNzZXJ2ZXIiOiAiYmluL3Rzc2VydmVyIiB9IH0sICJzaGE1MTItaGpjUzFtaGZ1eWk0V1c4SVd0alA3YnJEckcyY3VEWnVreXJZclNhdW9YR05neDBTN3pjZVAwN2FkWWtKeWNFcjU2Qk9VVE5QemJJbm9vaU4zZm4xcXc9PSJdLAoKICAgICJ1bmRpY2ktdHlwZXMiOiBbInVuZGljaS10eXBlc0A4LjkuMCIsICIiLCB7fSwgInNoYTUxMi1LVER5UlRZWDhzV21LWEFpa1BISFN5YzYzQ1JQRVRNY3R5aktGdXBjQzZPQkxYVDN4c04wZTlhRjdtK21JWHV0RldwVVh1ZWR0b3dHN2lMT3pwMGtRZz09Il0sCiAgfQp9Cg==
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "reacher-frontend",
+      "dependencies": {
+        "@tanstack/react-query": "5.100.10",
+        "react": "19.2.5",
+        "react-dom": "19.2.5",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.2",
+        "@types/react": "19.2.14",
+        "@types/react-dom": "19.2.3",
+        "bun-plugin-tailwind": "0.0.15",
+        "tailwindcss": "4.1.13",
+        "tailwindcss-safe-area": "1.3.0",
+        "typescript": "5.6.3",
+      },
+    },
+  },
+  "packages": {
+    "@tanstack/query-core": ["@tanstack/query-core@5.100.10", "", {}, "sha512-8UR0yJR+GiQ40m3lPhUr0xbfAupe6GSQiksSBSa9SM2NjezFyxXCIA69/lz8cSoNKZLrw1/PktIyQBJcVeMi3w=="],
+
+    "@tanstack/react-query": ["@tanstack/react-query@5.100.10", "", { "dependencies": { "@tanstack/query-core": "5.100.10" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-FLaZf2RCrA/Zgp4aiu5tG3TyasTRO7aZ99skxQpr3Hg/zXOhu6yq5FZCYQ/tRaJtM9ylnoK8tFK7PolXQadv6Q=="],
+
+    "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
+    "@types/node": ["@types/node@26.6.6", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog=="],
+
+    "@types/react": ["@types/react@19.2.14", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w=="],
+
+    "@types/react-dom": ["@types/react-dom@19.2.3", "", { "peerDependencies": { "@types/react": "^19.2.0" } }, "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ=="],
+
+    "bun-plugin-tailwind": ["bun-plugin-tailwind@0.0.15", "", { "peerDependencies": { "typescript": "^5.0.0" } }, "sha512-qtAXMNGG4R0UGGI8zWrqm2B7BdXqx48vunJXBPzfDOHPA5WkRUZdTSbE7TFwO4jLhYqSE23YMWsM9NhE6ovobw=="],
+
+    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "csstype": ["csstype@3.2.4", "", {}, "sha512-PoKaoPzQapnEoqUSnHx1u6W6ku8CVEgKsnpmmzU3m1nwkidpPBQ8V/Zq2+bWNrsOKoKLwTGdbx6xF7BXP1zLVQ=="],
+
+    "react": ["react@19.2.5", "", {}, "sha512-llUJLzz1zTUBrskt2pwZgLq59AemifIftw4aB7JxOqf1HY2FDaGDxgwpAPVzHU1kdWabH7FauP4i1oEeer2WCA=="],
+
+    "react-dom": ["react-dom@19.2.5", "", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.5" } }, "sha512-J5bAZz+DXMMwW/wV3xzKke59Af6CHY7G4uYLN1OvBcKEsWOs4pQExj86BBKamxl/Ik5bx9whOrvBlSDfWzgSag=="],
+
+    "scheduler": ["scheduler@0.27.0", "", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
+
+    "tailwindcss": ["tailwindcss@4.1.13", "", {}, "sha512-i+zidfmTqtwquj4hMEwdjshYYgMbOrPzb9a0M3ZgNa0JMoZeFC6bxZvO8yr8ozS6ix2SDz0+mvryPeBs2TFE+w=="],
+
+    "tailwindcss-safe-area": ["tailwindcss-safe-area@1.3.0", "", { "peerDependencies": { "tailwindcss": "^4.0.0" } }, "sha512-RoxnW1zAjBWC3XK+row7Qj5toRMRlKNN/p3FLXb6fTGKxDGWT6JP/mcNX1yf09xRficQ308hbwiedgniepSp1Q=="],
+
+    "typescript": ["typescript@5.6.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw=="],
+
+    "undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
+  }
+}
