@@ -30,7 +30,7 @@ services:
       - key: DATABASE_PATH
         value: /data/reacher.db
       - key: PUBLIC_URL
-        value: https://reacher-api.onrender.com
+        value: https://reacher-api-874c.onrender.com
       - key: ADMIN_TOKEN
         generateValue: true
     # --- Durable hosting (Starter plan and up only — uncomment together) ---
