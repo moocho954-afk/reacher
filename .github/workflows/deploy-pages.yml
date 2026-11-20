@@ -1,0 +1,63 @@
+# Deploy the ReacheR front end to GitHub Pages
+# Builds frontend/ with Bun and publishes frontend/dist as the Pages artifact.
+# Requires Pages to be enabled on the repo with source "GitHub Actions":
+#   Settings → Pages → Build and deployment → Source: GitHub Actions.
+# (That switch is a manual step in the GitHub web UI — the API cannot set it.)
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build front end
+        # REACHER_API_URL bakes a default API base into the bundle. Leave the
+        # repo variable empty for a front-end-only deploy (the page then shows
+        # the honest "backend not deployed yet" banner). To go live, set the
+        # repo variable REACHER_API_URL to the Render backend URL, or set
+        # window.__REACHER_API__ in frontend/index.html instead.
+        run: bun run build
+        env:
+          REACHER_API_URL: ${{ vars.REACHER_API_URL }}
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
