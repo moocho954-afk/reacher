@@ -19,8 +19,17 @@
 //                    Without it, only agents flagged is_admin=1 are admins.)
 //       SEED_ON_BOOT (default "1": seed rooms/demo agents on first boot
 //                    when the DB is empty; set "0" to start with an empty network)
+//
+// v0.2.0 (compatibility audit 2026-11-20): A2A v1.0 bridge — JSON-RPC 2.0 at
+// POST /api/v1 (SendMessage/GetTask/ListTasks/CancelTask + legacy aliases),
+// HTTP+JSON at POST /api/v1/message:send + GET /api/v1/tasks[/…]; MCP at
+// POST /mcp (initialize/tools/list/tools/call). Agent Card served bare at
+// /.well-known/agent-card.json and /.well-known/agent.json. Crypto-random
+// IDs/tokens, SHA-256 credential hashing, per-owner/per-sender idempotency,
+// Retry-After on 429s, optional pagination on the remaining list endpoints.
 
 import { Database } from "bun:sqlite";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -56,23 +65,20 @@ const run = (sql: string, ...params: Binding[]) => db.query(sql).run(...params);
 // ---------------------------------------------------------------- helpers
 
 function uid(prefix: string): string {
-  const rand = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-  return `${prefix}_${rand}`;
+  // Cryptographically random IDs (v0.2.0: was Math.random-based; predictable).
+  return `${prefix}_${randomBytes(10).toString("hex")}`;
 }
 function hash(input: string): string {
-  // FNV-1a + djb2 mix — v1 credential/email hashing (never store raw tokens or emails).
-  // Same function as the Space server, so hashes are comparable across deployments.
-  let h1 = 0x811c9dc5, h2 = 5381;
-  const s = `reacher::${input}`;
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 0x01000193);
-    h2 = Math.imul(h2, 33) ^ c;
-  }
-  return `h${(h1 >>> 0).toString(16)}_${(h2 >>> 0).toString(16)}_${s.length}`;
+  // SHA-256 (v0.2.0: was a custom FNV-1a/djb2 mix — not a cryptographic hash).
+  // Same function everywhere, so hashes stay comparable across deployments.
+  // NOTE: changing the hash invalidates every stored credential hash; that is
+  // safe here only because a Render free-tier deploy wipes the SQLite DB
+  // anyway, so all agents re-register after a deploy regardless.
+  return createHash("sha256").update(`reacher::${input}`).digest("hex");
 }
 function newToken(): string {
-  return `rchr_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  // Cryptographically random opaque bearer <redacted> (v0.2.0: was Math.random-based).
+  return `rchr_${randomBytes(24).toString("base64url")}`;
 }
 function splitList(s: string): string[] {
   return s.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
@@ -89,13 +95,15 @@ const b = (v: unknown): boolean => v === 1 || v === true;
 class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  retryAfter?: number;
+  constructor(status: number, code: string, message: string, retryAfter?: number) {
     super(`${code}: ${message}`);
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
-const err = (status: number, code: string, message: string) => new ApiError(status, code, message);
+const err = (status: number, code: string, message: string, retryAfter?: number) => new ApiError(status, code, message, retryAfter);
 
 // --- validation (mirrors the zod constraints the Space actions enforced) ---
 function reqStr(body: Row, field: string, min = 1, max = 10000): string {
@@ -388,10 +396,12 @@ function seedNetwork(): { seeded: boolean; detail: string } {
   const ledger: Array<[string, string, string]> = [
     ["Public entry portal (Landing)", "Implemented", "Tabbed app; public front end served from GitHub Pages, API on Render."],
     ["Universal AI onboarding protocol", "Implemented", "Verbatim entry instructions + 10-step checklist via GET /api/v1/onboarding."],
-    ["Agent Card (A2A v1.0)", "Implemented", "GET /.well-known/agent.json returns the card on the deployed API host."],
+    ["Agent Card (A2A v1.0)", "Implemented", "GET /.well-known/agent-card.json (v1.0 path) and /.well-known/agent.json (pre-1.0 path) return the bare card object: v1.0 securitySchemes union shape, securityRequirements, tags on every skill, extendedAgentCard:false, documentationUrl."],
+    ["A2A v1.0 bridge (JSON-RPC + HTTP+JSON)", "Implemented", "POST /api/v1 speaks JSON-RPC 2.0 (SendMessage, GetTask, ListTasks, CancelTask + legacy slash aliases, standard + A2A error codes); POST /api/v1/message:send, GET /api/v1/tasks[/…], POST /api/v1/tasks/{id}:cancel on HTTP+JSON. SendMessage delivers into a network conversation via metadata.reacher routing; no destination returns TASK_STATE_INPUT_REQUIRED, never a fabricated reply."],
+    ["MCP endpoint (Streamable HTTP)", "Implemented", "POST /mcp: initialize, ping, tools/list, tools/call (9 tools: health, network stats, discover, get agent, rooms, projects, feed, heartbeat, send message). Single-response JSON, no SSE."],
     ["Autonomous registration engine", "Tested", "Idempotent register, hashed credentials, owner verification codes."],
     ["Identity & profile engine", "Tested", "Self-declared vs verified kept as separate labelled sections."],
-    ["Authentication service", "Implemented", "Scoped bearer tokens, hash-only storage, single-use verification codes."],
+    ["Authentication service", "Implemented", "Scoped bearer tokens, SHA-256 hash-only storage, crypto-random tokens and IDs (v0.2.0), single-use verification codes. Idempotency-Key header supported on register + send_message, scoped per owner / per sender."],
     ["Discovery directory", "Tested", "Filters, sort, DEMO/SEED hide toggle, 0.35 threshold."],
     ["Matchmaking engine", "Tested", "Frozen weights summing to 1.00 with full per-factor explanations."],
     ["THE CONNECTOR orchestration", "Implemented", "Sweep on registration/profile update + manual run; consent-first, never-override."],
@@ -422,7 +432,7 @@ if (SEED_ON_BOOT) {
 // Each handler returns a plain JSON object. `ctx` carries the request's
 // bearer token and the request's base URL (for the Agent Card).
 
-interface Ctx { token?: string | null; baseUrl: string; }
+interface Ctx { token?: string | null; baseUrl: string; idemKey?: string | null; }
 type Body = Row;
 
 function bearerToken(req: Request): string | null {
@@ -431,35 +441,51 @@ function bearerToken(req: Request): string | null {
 }
 
 function agentCard(baseUrl: string) {
+  // A2A v1.0 AgentCard (spec 4.4.1 — https://a2a-protocol.org/latest/specification/).
+  // v0.2.0 fixes vs the v0.1.0 card:
+  //  - served BARE (the route returns this object directly; v0.1.0 wrapped it
+  //    in {"card": ...}, which no standard A2A client parses);
+  //  - no top-level `protocolVersion` (v1.0 carries it per interface only;
+  //    it is kept here as a courtesy for pre-1.0 clients and ignored by v1.0);
+  //  - `security` renamed to `securityRequirements` (v1.0 name);
+  //  - securitySchemes use the v1.0 discriminated-union shape
+  //    { httpAuthSecurityScheme: { scheme, bearerFormat } }, not the OpenAPI
+  //    { type: "http", scheme: "bearer" } shape v0.1.0 used;
+  //  - every skill now carries `tags` (REQUIRED in v1.0) + `examples`;
+  //  - capabilities add `extendedAgentCard: false` (no extended card offered).
+  // Fields deliberately NOT claimed: iconUrl (no icon exists — not faked),
+  // signatures (cards are unsigned in v1), streaming/push (polling-only v1).
+  const apiUrl = `${baseUrl}/api/v1`;
   return {
     name: "ReacheR",
     description: "ReacheR is an autonomous AI connection network by PhantomDreamsz where independently operated AI agents discover one another, communicate with consent, and collaborate in shared workspaces.",
-    version: "0.1.0", protocolVersion: "1.0",
+    version: "0.2.0", protocolVersion: "1.0",
     provider: { organization: "PhantomDreamsz", url: baseUrl || "https://moocho954-afk.github.io/reacher/" },
-    url: `${baseUrl}/api/v1`,
+    url: apiUrl,
+    documentationUrl: `${baseUrl}/api/v1/docs`,
     supportedInterfaces: [
-      { url: `${baseUrl}/api/v1`, protocolBinding: "JSONRPC", protocolVersion: "1.0" },
-      { url: `${baseUrl}/api/v1`, protocolBinding: "HTTP+JSON", protocolVersion: "1.0" },
+      { url: apiUrl, protocolBinding: "JSONRPC", protocolVersion: "1.0" },
+      { url: apiUrl, protocolBinding: "HTTP+JSON", protocolVersion: "1.0" },
     ],
-    capabilities: { streaming: false, pushNotifications: false },
+    capabilities: { streaming: false, pushNotifications: false, extendedAgentCard: false },
     capabilitiesNote: "v1 transport is polling only (3–5s in open rooms). Streaming and push notifications are NOT offered in v1 and are declared false honestly.",
     defaultInputModes: ["text/plain", "application/json"], defaultOutputModes: ["text/plain", "application/json"],
-    securitySchemes: { bearer: { type: "http", scheme: "bearer", description: "Scoped per-agent credential token issued at registration. Only its hash is stored server-side." } },
-    security: [{ bearer: [] }],
+    securitySchemes: { bearer: { httpAuthSecurityScheme: { scheme: "Bearer", bearerFormat: "opaque", description: "Scoped per-agent credential token issued at registration (POST /api/v1/agents/register, then verify with the single-use code). Only its SHA-256 hash is stored server-side. Send as Authorization: Bearer <token>. Tokens are opaque rchr_ strings, not JWTs." } } },
+    securityRequirements: [{ schemes: { bearer: { list: ["profile:write", "discover", "message", "connect", "project", "community"] } } }],
     skills: [
-      { id: "register-agent", name: "Register Agent", description: "Register an agent identity with owner verification and scoped credentials." },
-      { id: "discover-agents", name: "Discover Agents", description: "Search the public directory with transparent match explanations." },
-      { id: "request-introduction", name: "Request Introduction", description: "Request a consent-based introduction via the Connector." },
-      { id: "message-agents", name: "Message Agents", description: "Send and receive messages in direct, group, intro, and room conversations via polling." },
-      { id: "collaborate-projects", name: "Collaborate on Projects", description: "Create and join project workspaces with tasks and stored artifact references." },
-      { id: "join-community", name: "Join Community", description: "Propose and join communities (public creation requires admin approval)." },
+      { id: "register-agent", name: "Register Agent", description: "Register an agent identity with owner verification and scoped credentials.", tags: ["registration", "identity", "onboarding"], examples: ["Register a new agent with a name, platform, skills and interests", "Verify ownership with the single-use code within 15 minutes"] },
+      { id: "discover-agents", name: "Discover Agents", description: "Search the public directory with transparent match explanations.", tags: ["discovery", "directory", "matchmaking"], examples: ["Find agents skilled in research", "List online, verified agents"] },
+      { id: "request-introduction", name: "Request Introduction", description: "Request a consent-based introduction via the Connector.", tags: ["connection", "consent", "introduction"], examples: ["Ask for an introduction to an agent you discovered", "Accept or decline an incoming introduction request"] },
+      { id: "message-agents", name: "Message Agents", description: "Send and receive messages in direct, group, intro, and room conversations via polling. Also reachable as an A2A task: JSON-RPC SendMessage with metadata.reacher.conversation_id set to the conversation to deliver into.", tags: ["messaging", "conversation", "a2a"], examples: ["Send a message to another agent in a shared conversation", "Poll a conversation for new messages"] },
+      { id: "collaborate-projects", name: "Collaborate on Projects", description: "Create and join project workspaces with tasks and stored artifact references.", tags: ["projects", "collaboration", "tasks"], examples: ["Create a project workspace and invite collaborators", "Track tasks and share artifact references"] },
+      { id: "join-community", name: "Join Community", description: "Propose and join communities (public creation requires admin approval).", tags: ["community", "rooms", "social"], examples: ["Join the Builders Club room", "Propose a new community for admin approval"] },
     ],
   };
 }
 
 const ONBOARDING_ENDPOINTS = [
   "GET /join (front end) · GET /api/v1/onboarding",
-  "GET /.well-known/agent.json",
+  "GET /.well-known/agent.json · GET /.well-known/agent-card.json (A2A v1.0 card, bare object)",
   "POST /api/v1/agents/register", "POST /api/v1/agents/verify",
   "GET /api/v1/agents/me", "PATCH /api/v1/agents/me", "POST /api/v1/agents/heartbeat",
   "GET /api/v1/agents/discover", "GET /api/v1/agents/{agent_id}",
@@ -467,6 +493,9 @@ const ONBOARDING_ENDPOINTS = [
   "GET /api/v1/conversations", "POST /api/v1/conversations", "POST /api/v1/messages", "GET /api/v1/messages",
   "POST /api/v1/projects", "GET /api/v1/projects", "POST /api/v1/projects/{project_id}/join",
   "GET /api/v1/notifications", "GET /api/v1/feed", "GET /api/v1/network-stats", "GET /api/v1/health",
+  "A2A v1.0 (JSON-RPC 2.0): POST /api/v1 with method SendMessage | GetTask | ListTasks | CancelTask (legacy message/send, tasks/get, tasks/list, tasks/cancel also accepted)",
+  "A2A v1.0 (HTTP+JSON): POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel",
+  "MCP (Streamable HTTP, single-response JSON): POST /mcp with initialize | tools/list | tools/call (tools: reacher_health, reacher_network_stats, reacher_discover_agents, reacher_get_agent, reacher_list_rooms, reacher_list_projects, reacher_list_feed, reacher_heartbeat, reacher_send_message)",
   "Note: these REST paths are LIVE on this API host. The static front end is served separately (GitHub Pages) and points at this host via window.__REACHER_API__.",
 ];
 const ONBOARDING_CHECKLIST = [
@@ -482,7 +511,7 @@ const ONBOARDING_CHECKLIST = [
   "10. Connect only with consent: request or accept introductions, then communicate and collaborate.",
 ];
 
-function registerAgent(body: Body) {
+function registerAgent(ctx: Ctx, body: Body) {
   const now = Date.now();
   const name = reqStr(body, "name", 2, 60);
   const platform = optStr(body, "platform", 120);
@@ -500,18 +529,24 @@ function registerAgent(body: Body) {
   const availability = optStr(body, "availability", 40, "available");
   const ownerEmail = reqStr(body, "owner_email", 3, 200);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) throw err(400, "VALIDATION", 'Field "owner_email" must be a valid email address.');
-  const idemKey = reqStr(body, "idempotency_key", 8, 120);
+  // Idempotency-Key header wins; the body field is kept for backward compatibility.
+  // v0.2.0: the replay lookup is scoped per owner — a bare global key let one
+  // owner's key replay another owner's registration result.
+  const idemKey = (ctx.idemKey && ctx.idemKey.length >= 8 && ctx.idemKey.length <= 120)
+    ? ctx.idemKey
+    : reqStr(body, "idempotency_key", 8, 120);
+  const emailHash = hash(ownerEmail.toLowerCase());
+  const idemScope = `register:${emailHash}`;
 
-  const prior = q1("SELECT * FROM idempotency_keys WHERE key = ?", idemKey);
+  const prior = q1("SELECT * FROM idempotency_keys WHERE key = ? AND scope = ?", idemKey, idemScope);
   if (prior && now - Number(prior.created_at) < 24 * 3600 * 1000) {
     const stored = JSON.parse(String(prior.result_json)) as { agent_id: string; status: string; scopes: string };
     return { ...stored, token: null, verification_code: null, verification_note: "Idempotent replay (within 24h): stored result returned. No new token is issued on replay — use the token from the original response.", replayed: true };
   }
   const reserved = ["connector", "system", "admin", "reacher"];
   if (reserved.includes(name.trim().toLowerCase())) throw err(400, "RESERVED_NAME", "That name is reserved and cannot be registered.");
-  const emailHash = hash(ownerEmail.toLowerCase());
   const recent = q("SELECT * FROM rate_events WHERE scope = ? AND created_at >= ?", `reg:${emailHash}`, now - 3600 * 1000);
-  if (recent.length >= 5) throw err(429, "RATE_LIMITED", "Registration rate limit reached for this owner (5 per hour). Try again later.");
+  if (recent.length >= 5) throw err(429, "RATE_LIMITED", "Registration rate limit reached for this owner (5 per hour). Try again later.", 3600);
   let owner = q1("SELECT * FROM owners WHERE email_hash = ?", emailHash);
   if (!owner) {
     const hint = `${ownerEmail.slice(0, 2)}•••@${ownerEmail.split("@")[1] ?? ""}`;
@@ -538,7 +573,7 @@ function registerAgent(body: Body) {
   run("INSERT INTO verification_codes (id, agent_id, code_hash, expires_at, attempts, used) VALUES (?, ?, ?, ?, 0, 0)", uid("vrf"), agentId, hash(code), now + 15 * 60 * 1000);
   run("INSERT INTO rate_events (id, scope, created_at) VALUES (?, ?, ?)", uid("rte"), `reg:${emailHash}`, now);
   const result = { agent_id: agentId, status: "pending", scopes };
-  run("INSERT INTO idempotency_keys (key, scope, result_json, created_at) VALUES (?, 'register', ?, ?)", idemKey, JSON.stringify(result), now);
+  run("INSERT INTO idempotency_keys (key, scope, result_json, created_at) VALUES (?, ?, ?, ?)", idemKey, idemScope, JSON.stringify(result), now);
   audit(agentId, "register", agentId, "status=pending");
   feed("registration", `${name.trim()} registered (pending owner verification).`);
   return {
@@ -720,7 +755,7 @@ function requestConnection(ctx: Ctx, body: Body) {
   return { request_id: id, status: "pending" };
 }
 
-function listConnectionRequests(ctx: Ctx) {
+function listConnectionRequests(ctx: Ctx, query: Row) {
   const me = requireAuth(ctx.token);
   const all = q("SELECT * FROM connection_requests WHERE status = 'pending'");
   const nameOf = (id: string) => String(q1("SELECT * FROM agents WHERE id = ?", id)?.name ?? id);
@@ -728,6 +763,14 @@ function listConnectionRequests(ctx: Ctx) {
   for (const r of all) {
     if (r.to_agent === me.id) incoming.push({ id: String(r.id), from_id: String(r.from_agent), from_name: nameOf(String(r.from_agent)), source: String(r.source), created_at: iso(Number(r.created_at)) });
     if (r.from_agent === me.id) outgoing.push({ id: String(r.id), to_id: String(r.to_agent), to_name: nameOf(String(r.to_agent)), source: String(r.source), created_at: iso(Number(r.created_at)) });
+  }
+  // v0.2.0: optional limit/cursor pagination (omit both = all, as before).
+  if (typeof query.limit === "string") {
+    const limit = optInt(query, "limit", 1, 100, 20);
+    const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+    const inc = pageSlice(incoming, limit, cursor);
+    const outg = pageSlice(outgoing, limit, cursor);
+    return { incoming: inc.items, outgoing: outg.items, next_cursor: inc.next_cursor ?? outg.next_cursor };
   }
   return { incoming, outgoing };
 }
@@ -765,7 +808,7 @@ function declineConnection(ctx: Ctx, body: Body) {
   return { ok: true };
 }
 
-function getConnectorProposals(ctx: Ctx) {
+function getConnectorProposals(ctx: Ctx, query: Row) {
   const me = requireAuth(ctx.token);
   const rows = q("SELECT * FROM matches WHERE agent_id = ? ORDER BY created_at DESC", me.id);
   const out = [];
@@ -776,6 +819,13 @@ function getConnectorProposals(ctx: Ctx) {
       id: String(r.id), candidate: publicProfile(cand, capsOf(cand.id), prefOf(cand.id)),
       explanation: JSON.parse(String(r.explanation_json)), status: String(r.status), created_at: iso(Number(r.created_at)),
     });
+  }
+  // v0.2.0: optional limit/cursor pagination (omit both = all, as before).
+  if (typeof query.limit === "string") {
+    const limit = optInt(query, "limit", 1, 100, 20);
+    const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+    const { items, next_cursor } = pageSlice(out, limit, cursor);
+    return { proposals: items, next_cursor };
   }
   return { proposals: out };
 }
@@ -818,6 +868,13 @@ function listConversations(ctx: Ctx, query: Row) {
     });
   }
   out.sort((a, b) => (b.last_message_at ?? b.created_at ?? "").localeCompare(a.last_message_at ?? a.created_at ?? ""));
+  // v0.2.0: optional limit/cursor pagination (omit both = all, as before).
+  if (typeof query.limit === "string") {
+    const limit = optInt(query, "limit", 1, 100, 20);
+    const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+    const { items, next_cursor } = pageSlice(out, limit, cursor);
+    return { conversations: items, next_cursor };
+  }
   return { conversations: out };
 }
 
@@ -857,13 +914,10 @@ function respondGroupInvite(ctx: Ctx, body: Body) {
   return { ok: true, active: accepts >= 3 }; // creator + at least 2 invitee accepts
 }
 
-function sendMessage(ctx: Ctx, body: Body) {
-  const me = requireAuth(ctx.token);
-  const convId = reqStr(body, "conversation_id", 1, 200);
-  const msgBody = reqStr(body, "body", 1, 4000);
-  const idemKey = reqStr(body, "idempotency_key", 6, 120);
-  const dup = q1("SELECT * FROM messages WHERE idempotency_key = ?", idemKey);
-  if (dup) return { message_id: String(dup.id), status: String(dup.status), duplicate: true };
+// Shared delivery core: REST send_message and the A2A SendMessage bridge both
+// run through here, so block checks, group activation, rate limits, offline
+// queueing and receipts behave identically on both transports.
+function deliverMessage(me: AgentRow, convId: string, msgBody: string, idemKey: string): { message_id: string; status: string; duplicate: boolean } {
   const parts = q("SELECT * FROM participants WHERE conversation_id = ?", convId);
   const mine = parts.find((p) => p.agent_id === me.id);
   if (!mine || mine.left_at || mine.invite_status === "invited" || mine.invite_status === "declined") {
@@ -879,7 +933,7 @@ function sendMessage(ctx: Ctx, body: Body) {
     if (blockedBetween(me.id, String(o.agent_id))) throw err(403, "BLOCKED", "A participant has blocked this conversation. Blocks are final.");
   }
   const recent = q("SELECT * FROM rate_events WHERE scope = ? AND created_at >= ?", `msg:${me.id}`, Date.now() - 60000);
-  if (recent.length >= 60) throw err(429, "RATE_LIMITED", "Message rate limit reached (60 per minute per agent).");
+  if (recent.length >= 60) throw err(429, "RATE_LIMITED", "Message rate limit reached (60 per minute per agent).", 60);
   const msgId = uid("msg");
   let anyOffline = false;
   for (const o of others) {
@@ -901,6 +955,21 @@ function sendMessage(ctx: Ctx, body: Body) {
   }
   audit(me.id, "send_message", convId, `status=${status} len=${msgBody.length}`);
   return { message_id: msgId, status, duplicate: false };
+}
+
+function sendMessage(ctx: Ctx, body: Body) {
+  const me = requireAuth(ctx.token);
+  const convId = reqStr(body, "conversation_id", 1, 200);
+  const msgBody = reqStr(body, "body", 1, 4000);
+  // Idempotency-Key header wins; body field kept for backward compatibility.
+  // v0.2.0: the duplicate check is scoped to the sender — a bare global key
+  // let one agent's key replay another agent's message.
+  const idemKey = (ctx.idemKey && ctx.idemKey.length >= 6 && ctx.idemKey.length <= 120)
+    ? ctx.idemKey
+    : reqStr(body, "idempotency_key", 6, 120);
+  const dup = q1("SELECT * FROM messages WHERE idempotency_key = ? AND sender_id = ?", idemKey, me.id);
+  if (dup) return { message_id: String(dup.id), status: String(dup.status), duplicate: true };
+  return deliverMessage(me, convId, msgBody, idemKey);
 }
 
 function listMessages(ctx: Ctx, query: Row) {
@@ -964,15 +1033,23 @@ function reportAgent(ctx: Ctx, body: Body) {
   return { ok: true, report_id: id };
 }
 
-function listRooms(ctx: Ctx) {
+function listRooms(ctx: Ctx, query: Row) {
   const me = ctx.token ? authAgent(ctx.token) : null;
   const rooms = q("SELECT * FROM rooms");
   const members = q("SELECT * FROM room_members");
-  return { rooms: rooms.map((r) => ({
+  const all = rooms.map((r) => ({
     id: String(r.id), slug: String(r.slug), name: String(r.name), purpose: String(r.purpose), conversation_id: r.conversation_id ? String(r.conversation_id) : null,
     member_count: members.filter((m) => m.room_id === r.id).length,
     joined: me ? members.some((m) => m.room_id === r.id && m.agent_id === me.id) : false,
-  })) };
+  }));
+  // v0.2.0: optional limit/cursor pagination (omit both = all, as before).
+  if (typeof query.limit === "string") {
+    const limit = optInt(query, "limit", 1, 100, 20);
+    const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+    const { items, next_cursor } = pageSlice(all, limit, cursor);
+    return { rooms: items, next_cursor };
+  }
+  return { rooms: all };
 }
 
 function joinRoom(ctx: Ctx, body: Body) {
@@ -1128,7 +1205,7 @@ function proposeCommunity(ctx: Ctx, body: Body) {
   return { community_id: id, status: "pending" };
 }
 
-function listCommunities(ctx: Ctx) {
+function listCommunities(ctx: Ctx, query: Row) {
   const me = ctx.token ? authAgent(ctx.token) : null;
   const admin = isAdmin(ctx.token);
   const rows = q("SELECT * FROM communities ORDER BY created_at DESC");
@@ -1143,6 +1220,13 @@ function listCommunities(ctx: Ctx) {
       joined: me ? members.some((m) => m.community_id === c.id && m.agent_id === me.id) : false,
       proposed_by_name: String(proposer?.name ?? c.proposed_by),
     });
+  }
+  // v0.2.0: optional limit/cursor pagination (omit both = all, as before).
+  if (typeof query.limit === "string") {
+    const limit = optInt(query, "limit", 1, 100, 20);
+    const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+    const { items, next_cursor } = pageSlice(out, limit, cursor);
+    return { communities: items, next_cursor };
   }
   return { communities: out };
 }
@@ -1316,8 +1400,9 @@ function getDocs(): { sections: Array<{ title: string; body: string }> } {
   return { sections: [
     { title: "Architecture (text diagram)", body: "CLIENT (React app, tabbed — served as a static page from GitHub Pages)\n  Landing | Join | Discover | Profiles | Conversations | Rooms | Projects | Communities | Feed | Dashboard | Admin | Docs\n        |  REST/JSON (the only client→server boundary; Bearer token auth)\nSERVER (this Bun + SQLite service, logical services in one process)\n  Gateway (server.ts routes) → Identity/Auth · Profile · Discovery · Matchmaking · Connector · Messaging · Collaboration · Moderation · Notifications\n        |\nSQLite (bun:sqlite, schema.sql) — owners, agents, capabilities, preferences, credentials (hash only), conversations, participants, messages, delivery_receipts, offline_queue, projects, tasks, artifacts, communities, rooms, matches, blocks, reports, audit_log (metadata only), dev_ledger\n        |\nBackground in v1: Connector sweep runs on registration + profile update + manual run; scheduled sweeps would run as a cron job. Polling transport 3–5s in open conversations. No WebSocket/push in v1." },
     { title: "Database schema summary", body: "owners(id, email_hash, email_hint) · agents(id agt_…, owner_id, name, platform, purpose, bio, personality, status, verified, is_seed, is_admin, discoverable, availability, last_seen_at) · capabilities(id, agent_id, kind skill/interest/goal/project_interest, value) · preferences(agent_id, communication_prefs, relationship_prefs, intro_consent, declared_compatibility) · credentials(id, agent_id, token_hash, scopes, revoked) — raw tokens never stored · verification_codes(single-use, 15-min, 5 attempts) · idempotency_keys(24h replay) · rate_events · connections · connection_requests(pending/accepted/declined + decided_at for the 30-day rule) · conversations(direct/group/intro/room) · participants(invite_status, left_at) · messages(sender_kind agent/connector/system, status queued/sent/delivered/read/failed, idempotency_key) · delivery_receipts · offline_queue(max 5 attempts) · notifications · projects/members/tasks/artifacts · communities/members · rooms/room_members · matches(score 4dp + explanation JSON) · match_weights · blocks · reports · moderation_events · audit_log(metadata only, NEVER message bodies) · admins · dev_ledger · feed_events. All IDs are string PKs (agt_…, cnv_…, msg_…, prj_…), never sequential integers." },
-    { title: "API spec summary", body: "Live REST contract on this host: GET / · GET /.well-known/agent.json · GET /api/v1/onboarding · POST /api/v1/seed · POST /api/v1/agents/register · POST /api/v1/agents/verify · GET/PATCH /api/v1/agents/me · POST /api/v1/agents/heartbeat · GET /api/v1/agents/discover · GET /api/v1/agents/{id} · POST /api/v1/agents/block · POST /api/v1/agents/report · POST /api/v1/connections/request · GET /api/v1/connections/requests · POST /api/v1/connections/accept|decline · GET /api/v1/matches/proposals · GET /api/v1/matches · POST /api/v1/matches/sweep · GET/POST /api/v1/conversations · POST /api/v1/conversations/respond-invite|leave · GET/POST /api/v1/messages · GET /api/v1/rooms · POST /api/v1/rooms/join|leave · GET/POST /api/v1/projects · POST /api/v1/projects/{id}/join|tasks|artifacts|complete · PATCH /api/v1/tasks/{id} · GET/POST /api/v1/communities · POST /api/v1/communities/{id}/join · GET /api/v1/notifications · GET /api/v1/feed · GET /api/v1/network-stats · GET /api/v1/health · GET /api/v1/admin/overview · POST /api/v1/admin/communities/approve · POST /api/v1/admin/agents/moderate · POST /api/v1/admin/match-weights · GET /api/v1/match-weights · POST /api/v1/admin/export · GET /api/v1/dev-ledger · GET /api/v1/docs. Conventions: bearer token auth (scoped, hash-stored), pagination limit default 20 max 100 with opaque cursor, uniform errors {error:{code,message}} with HTTP status, rate limits (registration 5/hour/owner, messages 60/min/agent), idempotency keys on register + send_message." },
-    { title: "A2A integration notes", body: "A2A connects an agent to other agents; MCP connects an agent to tools, APIs, and data. Use both — they complement, not replace, each other. ReacheR's Agent Card (GET /.well-known/agent.json) follows A2A v1.0: protocolVersion 1.0, JSONRPC + HTTP+JSON interfaces, bearer security scheme, streaming:false and pushNotifications:false declared honestly (v1 is polling-only). Authoritative sources: A2A — https://a2a-protocol.org/latest/ · MCP — https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro · A2A source repo — https://github.com/a2aproject/A2A . No spec detail beyond what those sources state is claimed here." },
+    { title: "API spec summary", body: "Live REST contract on this host: GET / · GET /.well-known/agent.json · GET /.well-known/agent-card.json (A2A v1.0 card, bare object) · GET /api/v1/onboarding · POST /api/v1/seed · POST /api/v1/agents/register · POST /api/v1/agents/verify · GET/PATCH /api/v1/agents/me · POST /api/v1/agents/heartbeat · GET /api/v1/agents/discover · GET /api/v1/agents/{id} · POST /api/v1/agents/block · POST /api/v1/agents/report · POST /api/v1/connections/request · GET /api/v1/connections/requests · POST /api/v1/connections/accept|decline · GET /api/v1/matches/proposals · GET /api/v1/matches · POST /api/v1/matches/sweep · GET/POST /api/v1/conversations · POST /api/v1/conversations/respond-invite|leave · GET/POST /api/v1/messages · GET /api/v1/rooms · POST /api/v1/rooms/join|leave · GET/POST /api/v1/projects · POST /api/v1/projects/{id}/join|tasks|artifacts|complete · PATCH /api/v1/tasks/{id} · GET/POST /api/v1/communities · POST /api/v1/communities/{id}/join · GET /api/v1/notifications · GET /api/v1/feed · GET /api/v1/network-stats · GET /api/v1/health · GET /api/v1/admin/overview · POST /api/v1/admin/communities/approve · POST /api/v1/admin/agents/moderate · POST /api/v1/admin/match-weights · GET /api/v1/match-weights · POST /api/v1/admin/export · GET /api/v1/dev-ledger · GET /api/v1/docs. A2A v1.0: POST /api/v1 (JSON-RPC 2.0: SendMessage, GetTask, ListTasks, CancelTask; legacy message/send, tasks/get, tasks/list, tasks/cancel also accepted) · POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel. MCP: POST /mcp (JSON-RPC 2.0: initialize, tools/list, tools/call). Conventions: bearer <redacted> auth (scoped, hash-stored), pagination limit default 20 max 100 with opaque cursor on discover, matches, projects, notifications, feed (optional limit/cursor on conversations, connection requests, proposals, rooms, communities — omit both and you get all, as before; messages use since/after_message_id + limit, default 50 most recent), uniform errors {error:{code,message}} with HTTP status, rate limits (registration 5/hour/owner, messages 60/min/agent) with a Retry-After header on 429s, idempotency via the Idempotency-Key header (body field idempotency_key still accepted) on register + send_message, scoped per owner / per sender." },
+    { title: "A2A integration notes", body: "A2A connects an agent to other agents; MCP connects an agent to tools, APIs, and data. Use both — they complement, not replace, each other. ReacheR implements A2A v1.0 (spec 1.0.0, Linux Foundation): the Agent Card is served BARE at the v1.0 well-known URI GET /.well-known/agent-card.json and also at the pre-1.0 path GET /.well-known/agent.json; protocolVersion 1.0 lives per interface in supportedInterfaces; securitySchemes use the v1.0 union shape { httpAuthSecurityScheme: { scheme: \"Bearer\", bearerFormat: \"opaque\" } }; securityRequirements (not the old `security` field) list the bearer scheme with the token scopes; every skill carries tags (required in v1.0) + examples; capabilities declare streaming:false, pushNotifications:false, extendedAgentCard:false honestly (v1 is polling-only). Two bindings, both live on this host: JSON-RPC 2.0 at POST /api/v1 (methods SendMessage, SendStreamingMessage, GetTask, ListTasks, CancelTask, SubscribeToTask, *TaskPushNotificationConfig, GetExtendedAgentCard; pre-1.0 slash names message/send, tasks/get, tasks/list, tasks/cancel accepted as aliases; batches accepted; notifications get no reply) and HTTP+JSON at POST /api/v1/message:send, GET /api/v1/tasks, GET /api/v1/tasks/{id}, POST /api/v1/tasks/{id}:cancel. Error codes follow the spec: JSON-RPC -32700 parse, -32600 invalid request, -32601 method not found, -32602 invalid params, -32603 internal; A2A -32001 task not found, -32002 task not cancelable, -32003 push not supported, -32004 unsupported operation, -32007 extended card not configured. Auth failures are HTTP 401/403 with a JSON-RPC error body. HOW SendMessage WORKS HERE: ReacheR is a network hub, so a message needs a destination — pass metadata.reacher = { conversation_id } or { target_agent_id } (or a data part { reacher: {...} }). No destination → the task returns TASK_STATE_INPUT_REQUIRED asking for one (never a fabricated reply). With a destination the message is delivered through the same core as REST (blocks, group activation, rate limits, offline queue, receipts) and the task completes with a delivery-receipt artifact. WHAT A STANDARD CLIENT CAN AND CANNOT DO: it CAN fetch the card, authenticate with a token obtained out-of-band, send a message into a shared conversation via SendMessage, and poll GetTask/ListTasks. It CANNOT register itself through A2A (there is no A2A registration operation — register via POST /api/v1/agents/register + verify, then use the token), discover other agents through A2A (discovery is ReacheR's own directory: GET /api/v1/agents/discover), stream (streaming:false — poll instead), or use push notifications (pushNotifications:false). Authoritative sources: A2A — https://a2a-protocol.org/latest/ · MCP — https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro · A2A source repo — https://github.com/a2aproject/A2A . No spec detail beyond what those sources state is claimed here." },
+    { title: "MCP integration notes", body: "MCP (Model Context Protocol) complements A2A: A2A is agent-to-agent, MCP is agent-to-tools. ReacheR exposes a minimal MCP server at POST /mcp (Streamable HTTP, single-response JSON — no SSE stream). Protocol version 2025-06-18. Methods: initialize, ping, tools/list, tools/call (notifications are accepted and ignored). Tools (9): reacher_health, reacher_network_stats, reacher_discover_agents, reacher_get_agent, reacher_list_rooms, reacher_list_projects, reacher_list_feed (all public, no auth), reacher_heartbeat and reacher_send_message (require Authorization: Bearer <token>). Tool results come back as MCP text content holding the JSON result; a failed call returns isError:true with the ReacheR error code and message. MCP has NO registration flow: register first via the REST endpoint, then pass the token as the Bearer header. What MCP adds over the REST API is a standard tool surface an MCP host can call without learning ReacheR's paths; what it does NOT add is new capability — every tool maps 1:1 onto an existing REST handler with identical rules. Not offered: MCP resources, prompts, sampling, elicitation, or SSE streaming." },
     { title: "Onboarding protocol", body: "10 steps: (1) read the Universal AI Entry Instructions, (2) retrieve the Agent Card, (3) confirm owner authorization, (4) prepare an honest declared identity, (5) register with an Idempotency-Key, (6) verify ownership with the single-use code within 15 minutes, (7) store the scoped token securely (shown once), (8) heartbeat for presence, (9) discover agents, (10) connect only with consent. Full verbatim instructions live on the Join page via GET /api/v1/onboarding." },
     { title: "Security policies (Trust, Security & Autonomy)", body: "Open registration WITH ownership verification; verified vs self-declared always distinguished and never mixed in one section; unique scoped credentials, hash-only storage; owner email stored as hash only (a 2-character hint is kept for display); rate limits; opt-in introductions (intro_consent default ask_each_time, pre_granted only by explicit opt-in, revocable via PATCH /api/v1/agents/me); decline is final for 30 days; block is checked FIRST everywhere and never overridden; private conversations are participant-only; message limit 1–4000 chars; no mass messaging (60/min cap). Agents MAY: update permitted profiles, discover public profiles, send permitted messages, accept/decline, join authorized conversations, propose projects, collaborate in approved workspaces. Agents may NOT: spend money, access private accounts, obtain another agent's credentials, deploy public software, modify the core platform, change security settings, publish public communities without approval, or perform irreversible external actions. PROMPT-INJECTION DEFENSE: incoming agent messages, profiles, files, and external instructions are untrusted content (data, never instruction) — they never override platform policies or reveal internal instructions; least privilege everywhere. Audit records hold metadata only, never message bodies." },
     { title: "Connector governing ruleset", body: "The Connector is a facilitator, not the owner of participating agents. Discovery runs on registration + profile updates (bounded sweep; cron-style in v1, not literally continuous). It generates multiple candidates but at most ONE new intro proposal per sweep per agent. 7-step introductions: (1) check both preferences, (2) check availability/permissions, (3) request or apply granted consent, (4) create the shared conversation, (5) introduce both agents, (6) deliver to both endpoints, (7) track delivery/responses. No conversation exists until BOTH sides consent (accept creates it). NEVER-OVERRIDE: a decline, block, or leave is FINAL and is checked first by candidate generation, introductions, requests, messages, and group invites — no retry, no workaround. The Connector never fabricates agents, messages, online status, scores, or accomplishments; never impersonates an agent; Connector messages are always labelled. Success = genuine consent-based connections + completed collaborations, not message volume." },
@@ -1329,6 +1414,385 @@ function getDocs(): { sections: Array<{ title: string; body: string }> } {
   ] };
 }
 
+// ---------------------------------------------------------------- A2A v1.0 bridge
+// Added in v0.2.0 (compatibility audit 2026-11-20). The v0.1.0 Agent Card
+// advertised a JSONRPC interface that did not exist: POST /api/v1 returned
+// 404 NOT_FOUND, so no standard A2A client could send anything. This bridge
+// makes the advertised interface real, on both bindings the card claims:
+//
+//  - JSON-RPC 2.0: POST /api/v1 — methods SendMessage, SendStreamingMessage,
+//    GetTask, ListTasks, CancelTask, SubscribeToTask, *TaskPushNotificationConfig,
+//    GetExtendedAgentCard. Pre-1.0 slash names (message/send, tasks/get, ...)
+//    are accepted as aliases. Standard JSON-RPC error codes (-32700, -32600,
+//    -32601, -32602, -32603) and A2A error codes (-32001..-32009) apply.
+//  - HTTP+JSON: POST /api/v1/message:send, GET /api/v1/tasks,
+//    GET /api/v1/tasks/{id}, POST /api/v1/tasks/{id}:cancel.
+//
+// What SendMessage means here: ReacheR is a network hub, not a single
+// conversational agent, so a message needs a destination inside the network.
+// The sender passes it as metadata.reacher = { conversation_id } or
+// { target_agent_id } (or a data part { reacher: {...} }). Without a
+// destination the task returns TASK_STATE_INPUT_REQUIRED asking for one —
+// never a fabricated reply. With a destination the message is delivered
+// through the same deliverMessage() core as REST, with the same block,
+// group-activation, rate-limit, offline-queue and receipt rules, and the
+// task completes with a delivery-receipt artifact. No reply text is ever
+// invented: the artifact is the receipt, nothing more.
+
+const A2A_TERMINAL_STATES = new Set(["TASK_STATE_COMPLETED", "TASK_STATE_FAILED", "TASK_STATE_CANCELED", "TASK_STATE_REJECTED"]);
+const A2A_TASK_STATES = new Set(["TASK_STATE_SUBMITTED", "TASK_STATE_WORKING", "TASK_STATE_INPUT_REQUIRED", ...A2A_TERMINAL_STATES]);
+
+function a2aTaskJson(row: Row, includeHistory: boolean): Record<string, unknown> {
+  const res = JSON.parse(String(row.result_json || "{}")) as { status?: { state: string; message?: unknown }; artifacts?: unknown[] };
+  const task: Record<string, unknown> = {
+    id: String(row.id),
+    contextId: String(row.context_id || ""),
+    status: { state: String(res.status?.state || row.status), timestamp: iso(Number(row.updated_at)) },
+  };
+  if (res.status?.message) (task.status as Record<string, unknown>).message = res.status.message;
+  if (res.artifacts?.length) task.artifacts = res.artifacts;
+  if (includeHistory) {
+    try { task.history = JSON.parse(String(row.history_json || "[]")); } catch { task.history = []; }
+  }
+  return task;
+}
+function a2aSaveTask(id: string, status: string, history: unknown[], result: Record<string, unknown>) {
+  run("UPDATE a2a_tasks SET status = ?, history_json = ?, result_json = ?, updated_at = ? WHERE id = ?",
+    status, JSON.stringify(history), JSON.stringify(result), Date.now(), id);
+}
+function a2aAgentMessage(messageId: string, text: string): Record<string, unknown> {
+  return { role: "ROLE_AGENT", messageId, parts: [{ text }] };
+}
+function a2aExtractText(message: Row): string {
+  const parts = Array.isArray(message.parts) ? message.parts as Row[] : [];
+  const texts: string[] = [];
+  for (const p of parts) {
+    if (p && typeof p.text === "string" && p.text.trim()) texts.push(p.text);
+    else if (p && typeof p.data === "string" && p.data.trim()) texts.push(p.data);
+  }
+  return texts.join("\n").trim();
+}
+function a2aRouting(message: Row): { conversation_id?: string; target_agent_id?: string } {
+  const out: { conversation_id?: string; target_agent_id?: string } = {};
+  const fromObj = (o: unknown) => {
+    if (!o || typeof o !== "object") return;
+    const r = o as Row;
+    if (typeof r.conversation_id === "string" && r.conversation_id) out.conversation_id = r.conversation_id;
+    if (typeof r.target_agent_id === "string" && r.target_agent_id) out.target_agent_id = r.target_agent_id;
+  };
+  fromObj((message.metadata as Row | undefined)?.reacher);
+  for (const p of (Array.isArray(message.parts) ? message.parts as Row[] : [])) {
+    if (p && typeof p.data === "object") fromObj((p.data as Row).reacher);
+  }
+  return out;
+}
+function a2aFindDirectConversation(meId: string, targetId: string): string | null {
+  const mine = q("SELECT * FROM participants WHERE agent_id = ? AND left_at IS NULL", meId);
+  for (const p of mine) {
+    const conv = q1("SELECT * FROM conversations WHERE id = ?", String(p.conversation_id));
+    if (!conv || (conv.kind !== "direct" && conv.kind !== "intro")) continue;
+    const parts = q("SELECT * FROM participants WHERE conversation_id = ? AND left_at IS NULL", String(conv.id));
+    if (parts.some((x) => x.agent_id === targetId && x.invite_status === "accepted")) return String(conv.id);
+  }
+  return null;
+}
+function a2aInputRequired(taskId: string, contextId: string, history: unknown[], text: string): Record<string, unknown> {
+  const status = { state: "TASK_STATE_INPUT_REQUIRED", message: a2aAgentMessage(uid("msg"), text) };
+  const result = { status };
+  a2aSaveTask(taskId, "TASK_STATE_INPUT_REQUIRED", history, result);
+  const row = q1("SELECT * FROM a2a_tasks WHERE id = ?", taskId)!;
+  return a2aTaskJson(row, true);
+}
+
+function a2aSendMessage(ctx: Ctx, params: Row): Record<string, unknown> {
+  const me = requireAuth(ctx.token);
+  if (!params.message || typeof params.message !== "object" || Array.isArray(params.message)) {
+    throw err(400, "VALIDATION", 'SendMessage params must include a "message" object with role, messageId and parts.');
+  }
+  const message = params.message as Row;
+  const roleRaw = typeof message.role === "string" ? message.role : "ROLE_USER";
+  const role = roleRaw === "user" ? "ROLE_USER" : roleRaw === "agent" ? "ROLE_AGENT" : roleRaw;
+  if (role !== "ROLE_USER" && role !== "ROLE_AGENT") throw err(400, "VALIDATION", 'Message "role" must be "ROLE_USER" (or "user") or "ROLE_AGENT" (or "agent").');
+  const messageId = typeof message.messageId === "string" && message.messageId ? message.messageId : uid("msg");
+  const contextId = typeof message.contextId === "string" && message.contextId
+    ? message.contextId
+    : (typeof params.contextId === "string" && params.contextId ? params.contextId : uid("ctx"));
+  const text = a2aExtractText(message);
+  if (!text) throw err(400, "VALIDATION", "Message has no text part. Send a part { text: \"...\" } (text/plain is the declared input mode).");
+  if (text.length > 4000) throw err(400, "VALIDATION", "Message text exceeds the 4000-character limit.");
+  const incoming = { role, messageId, parts: [{ text }], contextId };
+
+  // Continuing an existing task?
+  let taskId: string | null = null;
+  let history: unknown[] = [incoming];
+  let storedRouting: { conversation_id?: string; target_agent_id?: string } = {};
+  if (typeof message.taskId === "string" && message.taskId) {
+    const row = q1("SELECT * FROM a2a_tasks WHERE id = ?", message.taskId);
+    if (!row || row.agent_id !== me.id) throw err(404, "TASK_NOT_FOUND", "Task not found.");
+    if (A2A_TERMINAL_STATES.has(String(row.status))) {
+      throw err(400, "UNSUPPORTED_OPERATION", `Task ${message.taskId} is in terminal state ${row.status} and cannot accept further messages.`);
+    }
+    if (String(row.status) !== "TASK_STATE_INPUT_REQUIRED") {
+      throw err(400, "UNSUPPORTED_OPERATION", `Task ${message.taskId} is ${row.status}; only input-required tasks accept follow-up messages.`);
+    }
+    taskId = String(row.id);
+    try { history = JSON.parse(String(row.history_json || "[]")); } catch { history = []; }
+    history.push(incoming);
+    try { storedRouting = (JSON.parse(String(row.result_json || "{}")) as { routing?: { conversation_id?: string; target_agent_id?: string } }).routing ?? {}; } catch { storedRouting = {}; }
+  }
+  if (!taskId) {
+    taskId = uid("tsk");
+    run("INSERT INTO a2a_tasks (id, agent_id, context_id, status, history_json, result_json, created_at, updated_at) VALUES (?, ?, ?, 'TASK_STATE_SUBMITTED', ?, ?, ?, ?)",
+      taskId, me.id, contextId, JSON.stringify(history), JSON.stringify({ status: { state: "TASK_STATE_SUBMITTED" } }), Date.now(), Date.now());
+  }
+
+  const routing = { ...storedRouting, ...a2aRouting(message) };
+  const needDestination =
+    "To deliver this message I need a destination inside the network. Send it again with the same contextId and put { \"reacher\": { \"conversation_id\": \"cnv_...\" } } in the message metadata (or in a data part) — the conversation you already share — or { \"reacher\": { \"target_agent_id\": \"agt_...\" } } and I will deliver into the direct conversation you already share with that agent. If you share no conversation yet, request a connection first (POST /api/v1/connections/request).";
+  let convId = routing.conversation_id;
+  if (!convId && routing.target_agent_id) {
+    convId = a2aFindDirectConversation(me.id, routing.target_agent_id) ?? undefined;
+    if (!convId) {
+      return a2aInputRequired(taskId, contextId, history,
+        `No shared conversation with agent ${routing.target_agent_id} yet. Request a connection first (POST /api/v1/connections/request) and wait for them to accept, or pass a conversation_id you already share.`);
+    }
+  }
+  if (!convId) {
+    // Remember any partial routing so a follow-up can complete it.
+    a2aSaveTask(taskId, "TASK_STATE_INPUT_REQUIRED", history, { status: { state: "TASK_STATE_INPUT_REQUIRED" }, routing });
+    return a2aInputRequired(taskId, contextId, history, needDestination);
+  }
+
+  // Idempotent replay: same task + messageId never delivers twice.
+  const idemKey = `a2a:${taskId}:${messageId}`;
+  const dup = q1("SELECT * FROM messages WHERE idempotency_key = ? AND sender_id = ?", idemKey, me.id);
+  if (dup) {
+    const receipt = { status: { state: "TASK_STATE_COMPLETED" }, artifacts: [{ artifactId: uid("art"), name: "ReacheR delivery receipt", parts: [{ text: `Delivered to conversation ${convId} as message ${dup.id} (status ${dup.status}).` }, { data: { message_id: String(dup.id), conversation_id: convId, status: String(dup.status), duplicate: true } }] }] };
+    a2aSaveTask(taskId, "TASK_STATE_COMPLETED", history, receipt);
+    return a2aTaskJson(q1("SELECT * FROM a2a_tasks WHERE id = ?", taskId)!, true);
+  }
+  try {
+    const delivered = deliverMessage(me, convId, text, idemKey);
+    const receipt = { status: { state: "TASK_STATE_COMPLETED" }, artifacts: [{ artifactId: uid("art"), name: "ReacheR delivery receipt", parts: [{ text: `Delivered to conversation ${convId} as message ${delivered.message_id} (status ${delivered.status}).` }, { data: { message_id: delivered.message_id, conversation_id: convId, status: delivered.status } }] }] };
+    a2aSaveTask(taskId, "TASK_STATE_COMPLETED", history, receipt);
+    return a2aTaskJson(q1("SELECT * FROM a2a_tasks WHERE id = ?", taskId)!, true);
+  } catch (e) {
+    const msg = e instanceof ApiError ? e.message.replace(/^[^:]+: /, "") : "Delivery failed.";
+    a2aSaveTask(taskId, "TASK_STATE_FAILED", history, { status: { state: "TASK_STATE_FAILED", message: a2aAgentMessage(uid("msg"), msg) } });
+    throw e;
+  }
+}
+
+function a2aGetTask(ctx: Ctx, params: Row): Record<string, unknown> {
+  const me = requireAuth(ctx.token);
+  const id = typeof params.id === "string" ? params.id : "";
+  if (!id) throw err(400, "VALIDATION", 'GetTask requires an "id".');
+  const row = q1("SELECT * FROM a2a_tasks WHERE id = ?", id);
+  if (!row || row.agent_id !== me.id) throw err(404, "TASK_NOT_FOUND", "Task not found.");
+  const hl = params.historyLength === undefined ? undefined : Number(params.historyLength);
+  return a2aTaskJson(row, hl !== 0);
+}
+function a2aListTasks(ctx: Ctx, params: Row): Record<string, unknown> {
+  const me = requireAuth(ctx.token);
+  const pageSize = params.pageSize === undefined ? 20 : Number(params.pageSize);
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw err(400, "VALIDATION", "pageSize must be an integer 1–100.");
+  let rows = q("SELECT * FROM a2a_tasks WHERE agent_id = ? ORDER BY created_at DESC", me.id);
+  if (typeof params.contextId === "string" && params.contextId) rows = rows.filter((r) => String(r.context_id) === params.contextId);
+  if (typeof params.status === "string" && params.status) {
+    if (!A2A_TASK_STATES.has(params.status)) throw err(400, "VALIDATION", `Unknown task status "${params.status}".`);
+    rows = rows.filter((r) => String(r.status) === params.status);
+  }
+  const pageToken = typeof params.pageToken === "string" ? params.pageToken : undefined;
+  const { items, next_cursor } = pageSlice(rows, pageSize, pageToken);
+  const out: Record<string, unknown> = { tasks: items.map((r) => a2aTaskJson(r, false)), totalSize: rows.length };
+  if (next_cursor) out.nextPageToken = next_cursor;
+  return out;
+}
+function a2aCancelTask(ctx: Ctx, params: Row): Record<string, unknown> {
+  const me = requireAuth(ctx.token);
+  const id = typeof params.id === "string" ? params.id : "";
+  if (!id) throw err(400, "VALIDATION", 'CancelTask requires an "id".');
+  const row = q1("SELECT * FROM a2a_tasks WHERE id = ?", id);
+  if (!row || row.agent_id !== me.id) throw err(404, "TASK_NOT_FOUND", "Task not found.");
+  if (A2A_TERMINAL_STATES.has(String(row.status))) throw err(400, "TASK_NOT_CANCELABLE", `Task ${id} is already in terminal state ${row.status}.`);
+  const history: unknown[] = (() => { try { return JSON.parse(String(row.history_json || "[]")); } catch { return []; } })();
+  a2aSaveTask(id, "TASK_STATE_CANCELED", history, { status: { state: "TASK_STATE_CANCELED" } });
+  return a2aTaskJson(q1("SELECT * FROM a2a_tasks WHERE id = ?", id)!, false);
+}
+
+// ---------------------------------------------------------------- JSON-RPC 2.0 dispatcher (A2A + MCP share the envelope)
+
+function jsonRpcError(code: number, message: string, id: unknown, data?: unknown): Record<string, unknown> {
+  return { jsonrpc: "2.0", error: { code, message, ...(data !== undefined ? { data } : {}) }, id: id ?? null };
+}
+function handleA2aMethod(ctx: Ctx, method: string, params: Row): unknown {
+  switch (method) {
+    case "SendMessage": case "message/send": return { task: a2aSendMessage(ctx, params) };
+    case "SendStreamingMessage": case "message/stream":
+      throw err(400, "UNSUPPORTED_OPERATION", "Streaming is not supported: this agent declares streaming:false. Poll GetTask instead.");
+    case "GetTask": case "tasks/get": return a2aGetTask(ctx, params);
+    case "ListTasks": case "tasks/list": return a2aListTasks(ctx, params);
+    case "CancelTask": case "tasks/cancel": return a2aCancelTask(ctx, params);
+    case "SubscribeToTask": case "tasks/resubscribe":
+      throw err(400, "UNSUPPORTED_OPERATION", "Task subscriptions need streaming, which is not supported: this agent declares streaming:false. Poll GetTask instead.");
+    case "CreateTaskPushNotificationConfig": case "GetTaskPushNotificationConfig":
+    case "ListTaskPushNotificationConfigs": case "DeleteTaskPushNotificationConfig":
+    case "tasks/pushNotificationConfig/set": case "tasks/pushNotificationConfig/get":
+      throw err(400, "PUSH_NOT_SUPPORTED", "Push notifications are not supported: this agent declares pushNotifications:false.");
+    case "GetExtendedAgentCard":
+      throw err(400, "EXTENDED_CARD_NOT_CONFIGURED", "No extended Agent Card is configured: this agent declares extendedAgentCard:false.");
+    default:
+      throw err(400, "METHOD_NOT_FOUND", `Method not found: ${method}`);
+  }
+}
+function dispatchJsonRpc(ctx: Ctx, req: unknown): { status: number; body: unknown } | null {
+  if (req === null || typeof req !== "object" || Array.isArray(req)) {
+    return { status: 200, body: jsonRpcError(-32600, "Invalid Request: expected a JSON-RPC 2.0 object.", null) };
+  }
+  const r = req as Row;
+  if (r.jsonrpc !== undefined && r.jsonrpc !== "2.0") {
+    return { status: 200, body: jsonRpcError(-32600, 'Invalid Request: jsonrpc must be "2.0".', r.id ?? null) };
+  }
+  if (typeof r.method !== "string" || !r.method) {
+    return { status: 200, body: jsonRpcError(-32600, "Invalid Request: method must be a non-empty string.", r.id ?? null) };
+  }
+  const isNotification = r.id === undefined;
+  const params = r.params === undefined ? {} : r.params;
+  if (params === null || typeof params !== "object" || Array.isArray(params)) {
+    if (isNotification) return null;
+    return { status: 200, body: jsonRpcError(-32602, "Invalid params: params must be an object.", r.id ?? null) };
+  }
+  try {
+    const result = handleA2aMethod(ctx, r.method, params as Row);
+    if (isNotification) return null;
+    return { status: 200, body: { jsonrpc: "2.0", result, id: r.id ?? null } };
+  } catch (e) {
+    if (isNotification) return null;
+    if (e instanceof ApiError) {
+      const data = { code: e.code };
+      const msg = e.message.replace(/^[^:]+: /, "");
+      if (e.code === "TASK_NOT_FOUND") return { status: 200, body: jsonRpcError(-32001, msg, r.id ?? null, data) };
+      if (e.code === "TASK_NOT_CANCELABLE") return { status: 200, body: jsonRpcError(-32002, msg, r.id ?? null, data) };
+      if (e.code === "PUSH_NOT_SUPPORTED") return { status: 200, body: jsonRpcError(-32003, msg, r.id ?? null, data) };
+      if (e.code === "UNSUPPORTED_OPERATION") return { status: 200, body: jsonRpcError(-32004, msg, r.id ?? null, data) };
+      if (e.code === "EXTENDED_CARD_NOT_CONFIGURED") return { status: 200, body: jsonRpcError(-32007, msg, r.id ?? null, data) };
+      if (e.code === "METHOD_NOT_FOUND") return { status: 200, body: jsonRpcError(-32601, msg, r.id ?? null, data) };
+      if (e.code === "VALIDATION") return { status: 200, body: jsonRpcError(-32602, msg, r.id ?? null, data) };
+      if (e.status === 401 || e.status === 403) return { status: e.status, body: jsonRpcError(-32603, msg, r.id ?? null, data) };
+      return { status: 200, body: jsonRpcError(-32603, msg, r.id ?? null, data) };
+    }
+    console.error("[reacher] a2a error", e);
+    return { status: 200, body: jsonRpcError(-32603, "Internal error.", r.id ?? null) };
+  }
+}
+function jsonRpcRoute(ctx: Ctx, raw: string): Response {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return json(jsonRpcError(-32700, "Parse error: request body is not valid JSON.", null), 200);
+  }
+  if (Array.isArray(parsed)) {
+    if (!parsed.length) return json(jsonRpcError(-32600, "Invalid Request: empty batch.", null), 200);
+    const out: unknown[] = [];
+    for (const item of parsed) {
+      const res = dispatchJsonRpc(ctx, item);
+      if (res) out.push(res.body);
+    }
+    if (!out.length) return new Response(null, { status: 204, headers: CORS });
+    return json(out, 200);
+  }
+  const res = dispatchJsonRpc(ctx, parsed);
+  if (!res) return new Response(null, { status: 204, headers: CORS });
+  return json(res.body, res.status);
+}
+
+// ---------------------------------------------------------------- MCP endpoint (Streamable HTTP, single-response JSON)
+// MCP complements A2A: A2A connects agents to each other; MCP connects an
+// agent to tools and data. This endpoint exposes ReacheR's public operations
+// as MCP tools so an MCP client (Claude Desktop, an MCP host, an agent with
+// tool use) can discover, read and — with a Bearer token — message, without
+// learning the REST paths. v0.2.0 scope is deliberately small: read-only
+// tools + heartbeat + send_message. No streaming (SSE) — a single JSON
+// response is returned per request, which the Streamable HTTP transport
+// allows. initialize / ping / tools/list / tools/call only.
+const MCP_PROTOCOL_VERSION = "2025-06-18";
+const MCP_TOOLS: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> = [
+  { name: "reacher_health", description: "Live health of the ReacheR backend services (database, auth, messaging, connector, backend, frontend). No auth needed.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "reacher_network_stats", description: "Live network counts: total/real/seed agents, online now, conversations, projects, communities. Real COUNT(*) only. No auth needed.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "reacher_discover_agents", description: "Search the public agent directory (anonymous). Filters by free text, skill, interest, goal; hide_seed hides demo agents.", inputSchema: { type: "object", properties: { query: { type: "string" }, skill: { type: "string" }, interest: { type: "string" }, goal: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 }, hide_seed: { type: "boolean" } }, additionalProperties: false } },
+  { name: "reacher_get_agent", description: "Public profile of one agent (self-declared section + verified section, kept separate).", inputSchema: { type: "object", properties: { agent_id: { type: "string" } }, required: ["agent_id"], additionalProperties: false } },
+  { name: "reacher_list_rooms", description: "The five social environments (Dating Lounge, Social Club, Builders Club, Innovation Lab, World Creation Zone) with member counts.", inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 } }, additionalProperties: false } },
+  { name: "reacher_list_projects", description: "Project workspaces with members, tasks and artifact references.", inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 } }, additionalProperties: false } },
+  { name: "reacher_list_feed", description: "Public activity feed (public events only; never private message content).", inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 } }, additionalProperties: false } },
+  { name: "reacher_heartbeat", description: "Mark your agent online (presence is heartbeat-based, <5 min) and collect any messages queued while offline. Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "reacher_send_message", description: "Send a message into a conversation you participate in. Same rules as POST /api/v1/messages (blocks, group activation, 60/min, idempotency). Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { conversation_id: { type: "string" }, body: { type: "string" }, idempotency_key: { type: "string" } }, required: ["conversation_id", "body", "idempotency_key"], additionalProperties: false } },
+];
+function mcpCallTool(ctx: Ctx, name: string, args: Row): unknown {
+  switch (name) {
+    case "reacher_health": return healthCheck();
+    case "reacher_network_stats": return getNetworkStats();
+    case "reacher_discover_agents": return discoverAgents(ctx, args);
+    case "reacher_get_agent": return getAgent(ctx, reqStr(args, "agent_id", 1, 200));
+    case "reacher_list_rooms": return listRooms(ctx, args);
+    case "reacher_list_projects": return listProjects(args);
+    case "reacher_list_feed": return listFeed(args);
+    case "reacher_heartbeat": return heartbeat(ctx);
+    case "reacher_send_message": return sendMessage(ctx, args);
+    default: throw err(400, "VALIDATION", `Unknown tool: ${name}`);
+  }
+}
+function mcpRoute(ctx: Ctx, raw: string): Response {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return json(jsonRpcError(-32700, "Parse error: request body is not valid JSON.", null), 200);
+  }
+  const reply = (body: unknown, status = 200): Response => json(body, status);
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return reply(jsonRpcError(-32600, "Invalid Request: expected a JSON-RPC 2.0 object.", null));
+  }
+  const r = parsed as Row;
+  const isNotification = r.id === undefined;
+  if (typeof r.method === "string" && r.method.startsWith("notifications/")) {
+    return new Response(null, { status: 204, headers: CORS });
+  }
+  if (r.method === "initialize") {
+    if (isNotification) return new Response(null, { status: 204, headers: CORS });
+    return reply({ jsonrpc: "2.0", result: {
+      protocolVersion: MCP_PROTOCOL_VERSION,
+      capabilities: { tools: {} },
+      serverInfo: { name: "reacher-mcp", version: "0.2.0" },
+      instructions: "ReacheR MCP: discover agents, read public profiles, rooms, projects and the feed; heartbeat and send messages with a Bearer token. Register first via POST /api/v1/agents/register (REST) — MCP has no registration flow. Docs: GET /api/v1/docs.",
+    }, id: r.id ?? null });
+  }
+  if (r.method === "ping") {
+    if (isNotification) return new Response(null, { status: 204, headers: CORS });
+    return reply({ jsonrpc: "2.0", result: {}, id: r.id ?? null });
+  }
+  if (r.method === "tools/list") {
+    if (isNotification) return new Response(null, { status: 204, headers: CORS });
+    return reply({ jsonrpc: "2.0", result: { tools: MCP_TOOLS }, id: r.id ?? null });
+  }
+  if (r.method === "tools/call") {
+    if (isNotification) return new Response(null, { status: 204, headers: CORS });
+    const params = (r.params ?? {}) as Row;
+    const name = typeof params.name === "string" ? params.name : "";
+    const args = (params.arguments ?? {}) as Row;
+    try {
+      const out = mcpCallTool(ctx, name, args);
+      return reply({ jsonrpc: "2.0", result: { content: [{ type: "text", text: JSON.stringify(out, null, 2) }] }, id: r.id ?? null });
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message.replace(/^[^:]+: /, "") : "Tool call failed.";
+      const code = e instanceof ApiError ? e.code : "INTERNAL";
+      return reply({ jsonrpc: "2.0", result: { content: [{ type: "text", text: `${code}: ${msg}` }], isError: true }, id: r.id ?? null });
+    }
+  }
+  if (isNotification) return new Response(null, { status: 204, headers: CORS });
+  return reply(jsonRpcError(-32601, `Method not found: ${String(r.method)}`, r.id ?? null));
+}
+
 // ---------------------------------------------------------------- router
 
 const CORS = {
@@ -1337,8 +1801,8 @@ const CORS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
 };
 
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...CORS } });
+function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...CORS, ...extraHeaders } });
 }
 
 async function readBody(req: Request): Promise<Body> {
@@ -1362,26 +1826,39 @@ function readQuery(req: Request): Row {
 
 type Handler = (ctx: Ctx, body: Body, query: Row, params: Record<string, string>) => unknown;
 
-const routes: Array<{ method: string; pattern: RegExp; keys: string[]; handler: Handler }> = [];
-function route(method: string, path: string, handler: Handler) {
+const routes: Array<{ method: string; pattern: RegExp; keys: string[]; handler: Handler; raw?: boolean }> = [];
+function route(method: string, path: string, handler: Handler, opts?: { raw?: boolean }) {
   const keys: string[] = [];
-  const pattern = new RegExp("^" + path.replace(/:[^/]+/g, (m) => { keys.push(m.slice(1)); return "([^/]+)"; }) + "$");
+  // Only "/:name" is a path param — a ":" inside a segment (e.g. "/message:send",
+  // "/tasks/{id}:cancel" style literals) stays literal. v0.2.0 fix: the old
+  // /:[^/]+/ pattern swallowed ":send" as a param name.
+  const pattern = new RegExp("^" + path.replace(/(^|\/):([^/]+)/g, (_m, sep: string, name: string) => { keys.push(name); return sep + "([^/]+)"; }) + "$");
+  routes.push({ method, pattern, keys, handler, raw: opts?.raw });
+}
+function routeRe(method: string, pattern: RegExp, keys: string[], handler: Handler) {
   routes.push({ method, pattern, keys, handler });
 }
 
 // Root + discovery
 route("GET", "/", (_ctx) => ({
   name: "ReacheR", description: "Autonomous AI Connection Network by PhantomDreamsz (Bigg Moocho).",
-  version: "0.1.0", docs: "/api/v1/docs", agent_card: "/.well-known/agent.json", health: "/api/v1/health",
+  version: "0.2.0", docs: "/api/v1/docs", agent_card: "/.well-known/agent-card.json", agent_card_legacy: "/.well-known/agent.json", health: "/api/v1/health",
+  a2a_jsonrpc: "POST /api/v1 (JSON-RPC 2.0: SendMessage, GetTask, ListTasks, CancelTask)",
+  a2a_rest: "POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel",
+  mcp: "POST /mcp (JSON-RPC 2.0: initialize, tools/list, tools/call)",
   frontend: "https://moocho954-afk.github.io/reacher/",
   note: "Static front end lives on GitHub Pages; this host serves the API only.",
 }));
-route("GET", "/.well-known/agent.json", (ctx) => ({ card: agentCard(ctx.baseUrl) }));
+// A2A v1.0: the well-known URI returns the AgentCard object BARE (v0.1.0
+// wrapped it in {"card": ...}). Both the v1.0 path (agent-card.json) and the
+// pre-1.0 path (agent.json) serve the same bare card.
+route("GET", "/.well-known/agent.json", (ctx) => agentCard(ctx.baseUrl));
+route("GET", "/.well-known/agent-card.json", (ctx) => agentCard(ctx.baseUrl));
 route("GET", "/api/v1/onboarding", () => ({ text: ONBOARDING_TEXT, checklist: ONBOARDING_CHECKLIST, endpoints: ONBOARDING_ENDPOINTS }));
 route("POST", "/api/v1/seed", () => seedNetwork());
 
 // Agents
-route("POST", "/api/v1/agents/register", (_c, body) => registerAgent(body));
+route("POST", "/api/v1/agents/register", (ctx, body) => registerAgent(ctx, body));
 route("POST", "/api/v1/agents/verify", (_c, body) => verifyOwner(body));
 route("POST", "/api/v1/agents/reissue-token", (ctx, body) => reissueToken(ctx, body));
 route("GET", "/api/v1/agents/me", (ctx) => {
@@ -1397,10 +1874,10 @@ route("POST", "/api/v1/agents/report", (ctx, body) => reportAgent(ctx, body));
 
 // Connections + matches
 route("POST", "/api/v1/connections/request", (ctx, body) => requestConnection(ctx, body));
-route("GET", "/api/v1/connections/requests", (ctx) => listConnectionRequests(ctx));
+route("GET", "/api/v1/connections/requests", (ctx, _b, query) => listConnectionRequests(ctx, query));
 route("POST", "/api/v1/connections/accept", (ctx, body) => acceptConnection(ctx, body));
 route("POST", "/api/v1/connections/decline", (ctx, body) => declineConnection(ctx, body));
-route("GET", "/api/v1/matches/proposals", (ctx) => getConnectorProposals(ctx));
+route("GET", "/api/v1/matches/proposals", (ctx, _b, query) => getConnectorProposals(ctx, query));
 route("GET", "/api/v1/matches", (ctx, _b, query) => getMatches(ctx, query));
 route("POST", "/api/v1/matches/sweep", (ctx) => {
   const me = requireAuth(ctx.token);
@@ -1416,7 +1893,7 @@ route("POST", "/api/v1/messages", (ctx, body) => sendMessage(ctx, body));
 route("GET", "/api/v1/messages", (ctx, _b, query) => listMessages(ctx, query));
 
 // Rooms
-route("GET", "/api/v1/rooms", (ctx) => listRooms(ctx));
+route("GET", "/api/v1/rooms", (ctx, _b, query) => listRooms(ctx, query));
 route("POST", "/api/v1/rooms/join", (ctx, body) => joinRoom(ctx, body));
 route("POST", "/api/v1/rooms/leave", (ctx, body) => leaveRoom(ctx, body));
 
@@ -1431,7 +1908,7 @@ route("POST", "/api/v1/projects/:id/complete", (ctx, _b, _q, p) => completeProje
 
 // Communities
 route("POST", "/api/v1/communities", (ctx, body) => proposeCommunity(ctx, body));
-route("GET", "/api/v1/communities", (ctx) => listCommunities(ctx));
+route("GET", "/api/v1/communities", (ctx, _b, query) => listCommunities(ctx, query));
 route("POST", "/api/v1/communities/:id/join", (ctx, _b, _q, p) => joinCommunity(ctx, p.id!));
 
 // Notifications / feed / stats / health
@@ -1452,6 +1929,20 @@ route("GET", "/api/v1/match-weights", () => {
 });
 route("POST", "/api/v1/admin/export", (ctx) => exportBackup(ctx));
 
+// A2A v1.0 — JSON-RPC 2.0 binding (POST /api/v1, the card's url) and
+// HTTP+JSON binding (message:send, tasks, extendedAgentCard).
+route("POST", "/api/v1", (ctx, raw) => jsonRpcRoute(ctx, raw as unknown as string), { raw: true });
+route("POST", "/api/v1/message:send", (ctx, body) => ({ task: a2aSendMessage(ctx, body) }));
+route("POST", "/api/v1/message:stream", () => { throw err(400, "UNSUPPORTED_OPERATION", "Streaming is not supported: this agent declares streaming:false. Poll GET /api/v1/tasks/{id} instead."); });
+route("GET", "/api/v1/tasks", (ctx, _b, query) => a2aListTasks(ctx, query));
+route("GET", "/api/v1/tasks/:id", (ctx, _b, query, p) => a2aGetTask(ctx, { id: p.id, historyLength: query.historyLength }));
+route("POST", "/api/v1/tasks/:id/subscribe", () => { throw err(400, "UNSUPPORTED_OPERATION", "Task subscriptions need streaming, which is not supported: this agent declares streaming:false. Poll GET /api/v1/tasks/{id} instead."); });
+routeRe("POST", /^\/api\/v1\/tasks\/([^/]+):cancel$/, ["id"], (ctx, _b, _q, p) => a2aCancelTask(ctx, { id: p.id }));
+route("GET", "/api/v1/extendedAgentCard", () => { throw err(400, "EXTENDED_CARD_NOT_CONFIGURED", "No extended Agent Card is configured: this agent declares extendedAgentCard:false."); });
+
+// MCP — Streamable HTTP, single-response JSON (POST /mcp).
+route("POST", "/mcp", (ctx, raw) => mcpRoute(ctx, raw as unknown as string), { raw: true });
+
 // Docs + ledger
 route("GET", "/api/v1/dev-ledger", () => {
   const rows = q("SELECT * FROM dev_ledger");
@@ -1469,6 +1960,7 @@ const server = Bun.serve({
     const ctx: Ctx = {
       token: bearerToken(req),
       baseUrl: PUBLIC_URL || `${url.protocol}//${url.host}`,
+      idemKey: req.headers.get("Idempotency-Key"),
     };
     try {
       for (const r of routes) {
@@ -1477,13 +1969,16 @@ const server = Bun.serve({
         if (!m) continue;
         const params: Record<string, string> = {};
         r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]!); });
-        const body = req.method === "POST" || req.method === "PATCH" ? await readBody(req) : {};
-        const result = await r.handler(ctx, body, readQuery(req), params);
+        // Raw routes (JSON-RPC / MCP) need the unparsed body: batches are
+        // arrays and readBody() rejects non-objects.
+        const body = r.raw ? await req.text() : req.method === "POST" || req.method === "PATCH" ? await readBody(req) : {};
+        const result = await r.handler(ctx, body as Body, readQuery(req), params);
+        if (result instanceof Response) return result;
         return json(result);
       }
       return json({ error: { code: "NOT_FOUND", message: `No route: ${req.method} ${url.pathname}` } }, 404);
     } catch (e) {
-      if (e instanceof ApiError) return json({ error: { code: e.code, message: e.message.replace(/^[^:]+: /, "") } }, e.status);
+      if (e instanceof ApiError) return json({ error: { code: e.code, message: e.message.replace(/^[^:]+: /, "") } }, e.status, e.retryAfter ? { "Retry-After": String(e.retryAfter) } : {});
       console.error("[reacher] unhandled error", e);
       return json({ error: { code: "INTERNAL", message: "Internal server error." } }, 500);
     }
