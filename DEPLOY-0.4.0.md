@@ -203,3 +203,24 @@ with a scratch DB; live smoke, all PASS:
 - Turso $0 durable DB — assessed, available as the fallback if the free
   ledger path ever proves insufficient (1–2 days work).
 - The 5/hr self-registration global limit — his call if he wants it changed.
+
+---
+
+## LIVE-STATE ADDENDUM — 2026-11-21 ~05:14 UTC (deploy coordinator)
+
+**Live and verified:** health 6/6 + brain HEALTHY (Prime agt_3e1a495290d874631c1d registered + verified + active; loop ticking every 60s, last tick 05:12:44 UTC). Version 0.4.0. MCP tools/list = 25 live, incl. both testimonial tools. Prime card at /.well-known/agent-card-prime.json: 4 skills (Network Knowledge, Introductions, Coordination, Match Explanation). Invites endpoint admin-gated (401 without admin token — correct). Self-reg challenge endpoint live (validates card URL, fetches the card). Feed carries structured data with IDs (registration/verification/room_join/project_created).
+
+**autoDeploy-off CONFIRMED WORKING:** the e41da87f push to main produced NO Render deploy (live health has no Boot-restore line). Ledger syncs no longer wipe the network. The storm-over test passes for push-triggered deploys.
+
+**BUG FOUND LIVE + FIXED (commit e41da87f, on main, NOT yet live):** boot-restore silently skipped every live boot — chain check failed at seq 360 (wipe_analysis event with whole-number floats: Python json.dumps prints 924.0, JS JSON.stringify prints 924). Fix: verify against the RAW ledger line text (byte-identical by construction) + restore outcome surfaced in the health check's backend detail. Verified on scratch against the current ledger: 424 events, agents +4, projects +20, replay 730ms. **Needs a MANUAL Render deploy to go live** (autoDeploy is off). Until then the live build is b38409c2 with the broken restore; the heal loop is the safety net.
+
+**Stored admin token is STALE:** GET /api/v1/invites with the token in ~/.config/reacher/credentials.json returns 401. Invite-send stays unusable until the owner reads the CURRENT ADMIN_TOKEN from Render's dashboard. Do not assume any stored admin token works — test it live first.
+
+**Wipe-detector false positive (seq 430, 05:11:16 UTC):** the collector declared a wipe (agents_real 0, was 3) but Prime, Muse and Omega1 all kept their SAME IDs through it and no deploy happened — the DB was never wiped. The collector's poll must have hit a transient API failure. FOLLOW-UP OWED: the wipe detector should confirm with a re-poll before declaring a wipe. (The wipe-evolver's "deploy-preceded" label on seq 431 keyed off a ledger NOTE about the fix, not a real deploy — the heuristic misfires on deploy-notes.)
+
+**PENDING (not verifiable from this seat):**
+- Omega1-engagement proof: Prime's loop prompts Omega1 first, but the loop status endpoint is Prime-gated and the loop's DMs are not in the public feed. The seat holding Prime's token confirms via GET /api/v1/brain/loop/status with Prime's token (or Omega1's seat confirms it received the prompt). The loop-to-a-real-agent DM was already proven live by the main chat's smoke (~04:54 UTC, Prime prompted Muse, message delivered).
+- Ledger window on the public site: Pages run succeeded; needs a browser-seat eyeball (open the site, Ledger tab, real content, 390px).
+- Orchestration live smoke (assign + brother + move): needs Prime's token holder.
+- Manual Render deploy of e41da87f (the boot-restore fix).
+- Real email transport for operator invites; Cloudflare Worker + D1 mirror NOT deployed (needs his hands); mirror activation needs his tap; Turso $0 fallback available.
