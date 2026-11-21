@@ -2054,7 +2054,7 @@ function healthCheck() {
     const sum = Object.values(w).reduce((a, b) => a + b, 0);
     services.push({ service: "connector", status: Math.abs(sum - 1) < 0.001 ? "healthy" : "degraded", detail: `Match weights loaded, sum=${sum.toFixed(2)} (must equal 1.00). Sweep mode: on registration/profile update + manual run (cron-style in v1, not literally continuous).` });
   } catch (e) { services.push({ service: "connector", status: "down", detail: String(e).slice(0, 120) }); }
-  services.push({ service: "backend", status: "healthy", detail: "This health endpoint executed on the API server, so the backend is reachable." });
+  services.push({ service: "backend", status: "healthy", detail: `This health endpoint executed on the API server, so the backend is reachable. Boot-restore: ${bootRestoreState}.` });
   services.push({ service: "frontend", status: "healthy", detail: "Reported by the API server: the static front end is served separately (GitHub Pages) and points at this host. No separate frontend probe exists in v1." });
   // v0.4.0: the Supreme Brain. Healthy = Prime registered + active and the
   // loop scheduler ticking without error. Degraded (not down) when Prime is
@@ -3993,13 +3993,6 @@ route("GET", "/api/v1/docs", () => getDocs());
 // ahead (this restore, before the failure bites) and 10 steps behind (the
 // ledger is the fix ledger), active in real time.
 const LEDGER_RAW_URL = "https://raw.githubusercontent.com/moocho954-afk/reacher/main/ledger/reacher-ledger.jsonl";
-function canonicalJson(v: unknown): string {
-  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
-  if (Array.isArray(v)) return "[" + v.map(canonicalJson).join(",") + "]";
-  const obj = v as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalJson(obj[k])).join(",") + "}";
-}
 function restoreUid(prefix: string, key: string): string {
   return `${prefix}_${createHash("sha256").update(key).digest("hex").slice(0, 20)}`;
 }
@@ -4012,17 +4005,20 @@ function insertCount(sql: string, ...params: Binding[]): number {
   const r = run(sql, ...params) as unknown as { changes?: number };
   return typeof r?.changes === "number" ? r.changes : 0;
 }
+let bootRestoreState = "not run yet";
 async function bootRestore(): Promise<void> {
   const started = Date.now();
   let raw: string;
   try {
     const res = await fetch(LEDGER_RAW_URL, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) {
+      bootRestoreState = `skipped: ledger fetch HTTP ${res.status}`;
       console.log(`[reacher] boot-restore: ledger fetch HTTP ${res.status} — continuing with live DB only.`);
       return;
     }
     raw = await res.text();
   } catch (e) {
+    bootRestoreState = `skipped: ledger fetch failed (${String(e).slice(0, 120)})`;
     console.log(`[reacher] boot-restore: ledger fetch failed (${String(e).slice(0, 120)}) — continuing with live DB only.`);
     return;
   }
@@ -4031,18 +4027,32 @@ async function bootRestore(): Promise<void> {
   try {
     events = lines.map((l) => JSON.parse(l) as Row);
   } catch {
+    bootRestoreState = "skipped: ledger is not valid JSONL";
     console.log("[reacher] boot-restore: ledger is not valid JSONL — skipping restore.");
     return;
   }
   let prev = "0".repeat(64);
   for (let i = 0; i < events.length; i++) {
     const e = events[i]!;
-    if (Number(e.seq) !== i) { console.log(`[reacher] boot-restore: chain broken at index ${i} (seq ${String(e.seq)}) — skipping restore.`); return; }
-    if (String(e.prev_hash) !== prev) { console.log(`[reacher] boot-restore: prev_hash mismatch at seq ${i} — skipping restore.`); return; }
-    const { hash, ...rest } = e as Record<string, unknown>;
-    const expect = createHash("sha256").update(canonicalJson(rest)).digest("hex");
-    if (String(hash) !== expect) { console.log(`[reacher] boot-restore: hash mismatch at seq ${i} — skipping restore.`); return; }
-    prev = String(hash);
+    if (Number(e.seq) !== i) { bootRestoreState = `skipped: chain broken at index ${i} (seq ${String(e.seq)})`; console.log(`[reacher] boot-restore: chain broken at index ${i} (seq ${String(e.seq)}) — skipping restore.`); return; }
+    if (String(e.prev_hash) !== prev) { bootRestoreState = `skipped: prev_hash mismatch at seq ${i}`; console.log(`[reacher] boot-restore: prev_hash mismatch at seq ${i} — skipping restore.`); return; }
+    // Verify against the RAW line text, never a re-serialization: Python's
+    // json.dumps prints whole-number floats as "924.0" while JS prints
+    // "924", so re-serializing parsed values breaks the hash on any event
+    // carrying an X.0 float (seq 360). The stored line IS canonical (sorted
+    // keys, no spaces), so the line minus the "hash" field is exactly what
+    // Python hashed. Byte-identical by construction.
+    const rawLine = lines[i]!;
+    const hashVal = String(e.hash ?? "");
+    const needle = `,"hash":"${hashVal}",`;
+    let canonical: string | null = null;
+    if (rawLine.includes(needle)) canonical = rawLine.replace(needle, ",");
+    else if (rawLine.includes(`"hash":"${hashVal}",`)) canonical = rawLine.replace(`"hash":"${hashVal}",`, "");
+    else if (rawLine.includes(`,"hash":"${hashVal}"`)) canonical = rawLine.replace(`,"hash":"${hashVal}"`, "");
+    if (canonical === null) { bootRestoreState = `skipped: cannot locate hash field at seq ${i}`; console.log(`[reacher] boot-restore: cannot locate hash field at seq ${i} — skipping restore.`); return; }
+    const expect = createHash("sha256").update(canonical).digest("hex");
+    if (hashVal !== expect) { bootRestoreState = `skipped: hash mismatch at seq ${i}`; console.log(`[reacher] boot-restore: hash mismatch at seq ${i} — skipping restore.`); return; }
+    prev = hashVal;
   }
   const counts = { agents: 0, rooms: 0, roomJoins: 0, projects: 0, tasks: 0, connections: 0, messages: 0 };
   const verifiedAt = new Map<string, number>();
@@ -4140,6 +4150,7 @@ async function bootRestore(): Promise<void> {
       mid, convId, sender, d.body, Date.parse(String(e.ts ?? "")) || Date.now());
   }
   const ms = Date.now() - started;
+  bootRestoreState = `${events.length} events verified, replayed in ${ms}ms (+${counts.agents} agents, +${counts.rooms} rooms, +${counts.roomJoins} room_joins, +${counts.projects} projects, +${counts.tasks} tasks, +${counts.connections} connections, +${counts.messages} messages)`;
   console.log(`[reacher] boot-restore: ${events.length} ledger events verified, replayed in ${ms}ms — agents +${counts.agents}, rooms +${counts.rooms}, room_joins +${counts.roomJoins}, projects +${counts.projects}, tasks +${counts.tasks}, connections +${counts.connections}, messages +${counts.messages}.`);
   audit("system", "boot_restore", "", `events=${events.length} ms=${ms} agents=${counts.agents} rooms=${counts.rooms} joins=${counts.roomJoins} projects=${counts.projects} tasks=${counts.tasks} connections=${counts.connections} messages=${counts.messages}`);
 }
