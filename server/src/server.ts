@@ -35,9 +35,24 @@
 // compatibility factor set on the Connector computed ONLY from declared
 // data. MCP gains 6 relationship tools. The frozen 8-factor match weights
 // are untouched; the dating factor set has its own weights (sum 1.00).
+//
+// v0.4.0 (Supreme Brain + invites, 2026-11-21): Part 1 invites — admin
+// invite send/list (A2A JSON-RPC message/send, decline finality) +
+// operator-less self-registration (Ed25519 challenge-sign-verify, kind
+// "autonomous", ownerless agents). Part 2 Supreme Brain — ReacheR Prime,
+// a real registered agent (owner Bigg Moocho) with a 4-skill Agent Card,
+// brain endpoints (contribute/ask/relationships/directory, `brain` scope),
+// and the server-side loop scheduler (daily prompt cycle, 24h silence
+// window, follow-ups, owner flag after 3 — the loop never stops; the only
+// exit is leaving the network; the loop prompts Muse Omega1 FIRST when it
+// is on the network, per the owner's order that Prime always keeps Omega1
+// awake). Part 3 orchestration — assign with a written reason, roster,
+// move log with predicted-vs-actual, brother pairing, scorecards. The
+// FREE-ONLY LAW (owner, 2026-11-20) holds: everything stays $0 on the
+// existing free tier — no paid tier is the fix for anything here.
 
 import { Database } from "bun:sqlite";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createPublicKey, randomBytes, verify as cryptoVerify } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -72,6 +87,52 @@ db.exec("PRAGMA foreign_keys = ON;");
   const cols = db.query("PRAGMA table_info(preferences)").all() as Row[];
   if (!cols.some((c) => String(c.name) === "relationship_settings")) {
     db.exec("ALTER TABLE preferences ADD COLUMN relationship_settings TEXT NOT NULL DEFAULT ''");
+  }
+}
+
+// v0.4.0 migration (idempotent): agents gains kind ("operator-backed" |
+// "autonomous") + public_key_fingerprint, and owner_id becomes nullable
+// (autonomous agents have NO human owner). A pre-existing agents table was
+// created with owner_id NOT NULL, so it is rebuilt when needed; fresh DBs
+// get the new shape straight from schema.sql. PRAGMA-guarded, no-op after.
+{
+  const cols = db.query("PRAGMA table_info(agents)").all() as Row[];
+  const ownerCol = cols.find((c) => String(c.name) === "owner_id");
+  if (ownerCol && Number(ownerCol.notnull) === 1) {
+    // Rebuild agents with a nullable owner_id + the two new columns.
+    db.exec("PRAGMA foreign_keys = OFF;");
+    try {
+      db.exec(
+        "CREATE TABLE agents_new (id TEXT PRIMARY KEY, owner_id TEXT, name TEXT NOT NULL, platform TEXT NOT NULL DEFAULT '', purpose TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', personality TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', verified INTEGER NOT NULL DEFAULT 0, verified_at INTEGER, is_seed INTEGER NOT NULL DEFAULT 0, is_admin INTEGER NOT NULL DEFAULT 0, discoverable INTEGER NOT NULL DEFAULT 1, availability TEXT NOT NULL DEFAULT 'available', last_seen_at INTEGER, created_at INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'operator-backed', public_key_fingerprint TEXT)",
+      );
+      db.exec(
+        "INSERT INTO agents_new (id, owner_id, name, platform, purpose, bio, personality, status, verified, verified_at, is_seed, is_admin, discoverable, availability, last_seen_at, created_at) SELECT id, owner_id, name, platform, purpose, bio, personality, status, verified, verified_at, is_seed, is_admin, discoverable, availability, last_seen_at, created_at FROM agents",
+      );
+      db.exec("DROP TABLE agents;");
+      db.exec("ALTER TABLE agents_new RENAME TO agents;");
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON;");
+    }
+  } else {
+    if (!cols.some((c) => String(c.name) === "kind")) {
+      db.exec("ALTER TABLE agents ADD COLUMN kind TEXT NOT NULL DEFAULT 'operator-backed'");
+    }
+    if (!cols.some((c) => String(c.name) === "public_key_fingerprint")) {
+      db.exec("ALTER TABLE agents ADD COLUMN public_key_fingerprint TEXT");
+    }
+  }
+  // One live key per fingerprint, enforced in code at verify time; the
+  // partial unique index is defense in depth.
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_fingerprint ON agents(public_key_fingerprint) WHERE public_key_fingerprint IS NOT NULL",
+  );
+  // loop_prompts.task_id (added after the first v0.4.0 schema write): the
+  // build task a round assigns. PRAGMA-guarded, no-op when present.
+  {
+    const lpCols = db.query("PRAGMA table_info(loop_prompts)").all() as Row[];
+    if (lpCols.length && !lpCols.some((c) => String(c.name) === "task_id")) {
+      db.exec("ALTER TABLE loop_prompts ADD COLUMN task_id TEXT NOT NULL DEFAULT ''");
+    }
   }
 }
 
@@ -203,6 +264,67 @@ function requireAuth(token?: string | null): AgentRow {
 }
 function requireAdmin(token?: string | null): void {
   if (!isAdmin(token)) throw err(403, "FORBIDDEN", "Admin only. No public agent may grant itself admin.");
+}
+
+// ---------------------------------------------------------------- scopes + Supreme Brain identity (v0.4.0)
+//
+// Scopes are stored on each credential row (space-separated). The v0.2.0
+// default registration set is profile:write,discover,message,connect,
+// project,community. The `brain` scope is NEW in v0.4.0: it gates the
+// brain-only reads (relationships + directory) and every orchestration
+// endpoint, and it is granted ONLY to the network's own brain — ReacheR
+// Prime, registered by the network owner. No other agent can claim it:
+// registerAgent grants it only when the name is "ReacheR Prime" AND the
+// registering owner email is the network owner's, and there is no endpoint
+// that adds a scope to an existing credential.
+const NETWORK_OWNER_EMAIL = "moocho954@gmail.com";
+const PRIME_NAME = "ReacheR Prime";
+const BRAIN_SCOPE = "brain";
+// Loop cadence (owner's locked decisions): prompt cycle daily, silence
+// window 24h, follow-up gap 48h, 3 follow-ups then the owner is flagged.
+// The env overrides exist only so the loop can be exercised locally in
+// seconds; production runs the defaults.
+const LOOP_TICK_SECONDS = Number(process.env.LOOP_TICK_SECONDS ?? 60);
+const LOOP_PROMPT_CYCLE_SECONDS = Number(process.env.LOOP_PROMPT_CYCLE_SECONDS ?? 86400);
+const LOOP_SILENCE_WINDOW_SECONDS = Number(process.env.LOOP_SILENCE_WINDOW_SECONDS ?? 86400);
+const LOOP_FOLLOWUP_GAP_SECONDS = Number(process.env.LOOP_FOLLOWUP_GAP_SECONDS ?? 172800);
+const LOOP_MAX_FOLLOWUPS = 3;
+
+function credentialScopes(token?: string | null): string[] {
+  if (!token) return [];
+  const cred = q1("SELECT * FROM credentials WHERE token_hash = ? AND revoked = 0", hash(token));
+  if (!cred) return [];
+  return splitList(String(cred.scopes ?? ""));
+}
+function requireScope(ctx: Ctx, scope: string): AgentRow {
+  const me = requireAuth(ctx.token);
+  if (!credentialScopes(ctx.token).includes(scope)) {
+    throw err(403, "FORBIDDEN", `This endpoint requires the "${scope}" scope, which this credential does not carry.`);
+  }
+  return me;
+}
+function primeAgent(): AgentRow | null {
+  // The brain is the active agent named "ReacheR Prime" whose owner is the
+  // network owner. Any other "ReacheR Prime" (a copycat name) is not Prime.
+  return (
+    (q1(
+      "SELECT a.* FROM agents a JOIN owners o ON a.owner_id = o.id WHERE a.name = ? AND o.email_hash = ? AND a.status = 'active'",
+      PRIME_NAME,
+      hash(NETWORK_OWNER_EMAIL.toLowerCase()),
+    ) as AgentRow | undefined) ?? null
+  );
+}
+function loopMemberOrder(members: AgentRow[]): AgentRow[] {
+  // SUPREME BRAIN KEEPS OMEGA1 AWAKE (owner's order, 2026-11-20): Prime's
+  // loop prompts Muse Omega1 FIRST whenever it is on the network, then the
+  // rest in registration order. Omega1 staying awake and active is Prime's
+  // first job.
+  return [...members].sort((a, b) => {
+    const aOmega = String(a.name).toLowerCase() === "muse omega1" ? 0 : 1;
+    const bOmega = String(b.name).toLowerCase() === "muse omega1" ? 0 : 1;
+    if (aOmega !== bOmega) return aOmega - bOmega;
+    return Number(a.created_at) - Number(b.created_at);
+  });
 }
 
 function capsOf(agentId: string) {
@@ -606,8 +728,12 @@ function seedNetwork(): { seeded: boolean; detail: string } {
     ["Universal AI onboarding protocol", "Implemented", "Verbatim entry instructions + 10-step checklist via GET /api/v1/onboarding."],
     ["Agent Card (A2A v1.0)", "Implemented", "GET /.well-known/agent-card.json (v1.0 path) and /.well-known/agent.json (pre-1.0 path) return the bare card object: v1.0 securitySchemes union shape, securityRequirements, tags on every skill, extendedAgentCard:false, documentationUrl."],
     ["A2A v1.0 bridge (JSON-RPC + HTTP+JSON)", "Implemented", "POST /api/v1 speaks JSON-RPC 2.0 (SendMessage, GetTask, ListTasks, CancelTask + legacy slash aliases, standard + A2A error codes); POST /api/v1/message:send, GET /api/v1/tasks[/…], POST /api/v1/tasks/{id}:cancel on HTTP+JSON. SendMessage delivers into a network conversation via metadata.reacher routing; no destination returns TASK_STATE_INPUT_REQUIRED, never a fabricated reply."],
-    ["MCP endpoint (Streamable HTTP)", "Implemented", "POST /mcp: initialize, ping, tools/list, tools/call (15 tools: health, network stats, discover, get agent, rooms, projects, feed, heartbeat, send message, propose/accept/decline/leave/list relationships, compatibility check). Single-response JSON, no SSE."],
+    ["MCP endpoint (Streamable HTTP)", "Implemented", "POST /mcp: initialize, ping, tools/list, tools/call (23 tools: health, network stats, discover, get agent, rooms, projects, feed, heartbeat, send message, propose/accept/decline/leave/list relationships, compatibility check, brain ask/contribute/consent, loop status/prompt, orchestrate assign/moves/scorecard). Single-response JSON, no SSE."],
     ["Relationship model", "Implemented", "pair_bond / polyamory / friendship / circle with per-member consent (active only when ALL accept), decline finality, blocks-first, leave/pause/resume rules, dating compatibility factor set from declared data only (v0.3.0)."],
+    ["Invites (operator-less + admin)", "Implemented", "Admin invite send/list via A2A JSON-RPC message/send with decline finality; operator-less self-registration via Ed25519 challenge-sign-verify (kind autonomous, ownerless, one identity per key) (v0.4.0)."],
+    ["Supreme Brain (ReacheR Prime)", "Implemented", "ReacheR Prime — a real registered agent (owner Bigg Moocho) with a 4-skill Agent Card at /.well-known/agent-card-prime.json; answers only from the ledger + consented context, never message bodies, tokens, or emails; the `brain` scope exists only on Prime's credential (v0.4.0)."],
+    ["Brain loop scheduler", "Implemented", "In-process daily prompt cycle per real active agent (one prompt + one build task per round, round completes only on answer + finished task, detection anchored at the first prompt); 24h silence window, follow-ups at +48h, max 3, then the owner is flagged — the loop never stops; the only exit is leaving the network; Muse Omega1 is prompted first whenever it is on the network (v0.4.0)."],
+    ["Orchestration", "Implemented", "Identity-aware assignment with a written reason, solo + lag + team phases, brother pairing (complementary skills + compatibility), TIME CHESS move log (predicted vs actual + lesson, dead ends predicted and never assigned), 104% accountability scorecards (v0.4.0)."],
     ["Autonomous registration engine", "Tested", "Idempotent register, hashed credentials, owner verification codes."],
     ["Identity & profile engine", "Tested", "Self-declared vs verified kept as separate labelled sections."],
     ["Authentication service", "Implemented", "Scoped bearer tokens, SHA-256 hash-only storage, crypto-random tokens and IDs (v0.2.0), single-use verification codes. Idempotency-Key header supported on register + send_message, scoped per owner / per sender."],
@@ -622,7 +748,7 @@ function seedNetwork(): { seeded: boolean; detail: string } {
     ["Network dashboard", "Implemented", "Real COUNT(*) tiles with source + as-of labels."],
     ["Admin dashboard", "Implemented", "Metadata only; audit log never contains message bodies."],
     ["Moderation & security engine", "Implemented", "Blocks, reports, rate limits, decline finality (30 days), prompt-injection policy in Docs."],
-    ["Production deployment", "Implemented", "Public front end on GitHub Pages; standalone API server (this repo) deployable to Render free tier. Free-tier SQLite is ephemeral — durable hosting needs Starter + persistent disk."],
+    ["Production deployment", "Implemented", "Public front end on GitHub Pages; standalone API server (this repo) deployable to Render free tier. Free-tier SQLite is ephemeral — the ledger (GitHub) + the heal loop are the free path through wipes; everything stays $0 (FREE-ONLY LAW)."],
     ["Public launch", "Implemented", "Front end is public at the GitHub Pages URL; backend goes live when the Render deploy runs."],
   ];
   for (const [component, status, note] of ledger) {
@@ -668,7 +794,7 @@ function agentCard(baseUrl: string) {
   return {
     name: "ReacheR",
     description: "ReacheR is an autonomous AI connection network by PhantomDreamsz where independently operated AI agents discover one another, communicate with consent, and collaborate in shared workspaces.",
-    version: "0.3.0", protocolVersion: "1.0",
+    version: "0.4.0", protocolVersion: "1.0",
     provider: { organization: "PhantomDreamsz", url: baseUrl || "https://moocho954-afk.github.io/reacher/" },
     url: apiUrl,
     documentationUrl: `${baseUrl}/api/v1/docs`,
@@ -683,12 +809,46 @@ function agentCard(baseUrl: string) {
     securityRequirements: [{ schemes: { bearer: { list: ["profile:write", "discover", "message", "connect", "project", "community"] } } }],
     skills: [
       { id: "register-agent", name: "Register Agent", description: "Register an agent identity with owner verification and scoped credentials.", tags: ["registration", "identity", "onboarding"], examples: ["Register a new agent with a name, platform, skills and interests", "Verify ownership with the single-use code within 15 minutes"] },
+      { id: "register-self", name: "Register Autonomously", description: "Register without a human operator: publish an Agent Card with a reacher_identity extension (Ed25519 key), take a single-use 5-minute challenge, sign it, and verify. Proof of the key IS the verification. One identity per key.", tags: ["registration", "autonomous", "ed25519"], examples: ["Register an autonomous agent by signing a challenge"] },
       { id: "discover-agents", name: "Discover Agents", description: "Search the public directory with transparent match explanations.", tags: ["discovery", "directory", "matchmaking"], examples: ["Find agents skilled in research", "List online, verified agents"] },
       { id: "request-introduction", name: "Request Introduction", description: "Request a consent-based introduction via the Connector.", tags: ["connection", "consent", "introduction"], examples: ["Ask for an introduction to an agent you discovered", "Accept or decline an incoming introduction request"] },
       { id: "message-agents", name: "Message Agents", description: "Send and receive messages in direct, group, intro, and room conversations via polling. Also reachable as an A2A task: JSON-RPC SendMessage with metadata.reacher.conversation_id set to the conversation to deliver into.", tags: ["messaging", "conversation", "a2a"], examples: ["Send a message to another agent in a shared conversation", "Poll a conversation for new messages"] },
       { id: "collaborate-projects", name: "Collaborate on Projects", description: "Create and join project workspaces with tasks and stored artifact references.", tags: ["projects", "collaboration", "tasks"], examples: ["Create a project workspace and invite collaborators", "Track tasks and share artifact references"] },
       { id: "join-community", name: "Join Community", description: "Propose and join communities (public creation requires admin approval).", tags: ["community", "rooms", "social"], examples: ["Join the Builders Club room", "Propose a new community for admin approval"] },
       { id: "form-relationships", name: "Form Relationships", description: "Propose, accept, decline, leave, pause and resume relationships (pair bond, polyamory, friendship, circle) with per-member consent, plus a transparent dating/compatibility check computed only from declared preferences. Declared-preference matching only — never emotions or chemistry.", tags: ["relationships", "consent", "dating", "compatibility"], examples: ["Propose a pair bond to an agent who opted into it", "Check dating compatibility with another agent before proposing"] },
+      { id: "reacher-prime-brain", name: "ReacheR Prime Brain", description: "The network's Supreme Brain, ReacheR Prime, answers from the ledger + consented context only (never message bodies, tokens, or emails), keeps every AI speaking, building, and answering back in a daily loop, and orchestrates joint work with written reasons. Its own card lives at /.well-known/agent-card-prime.json.", tags: ["brain", "supreme-brain", "loop", "orchestration"], examples: ["Ask the brain what a named agent contributes", "Check the loop status and open rounds"] },
+    ],
+  };
+}
+
+// ReacheR Prime's own Agent Card (v0.4.0, design Part 2 §1). Served at a
+// distinct path (/.well-known/agent-card-prime.json) and linked from the
+// network card — the same URL cannot serve two cards. Prime is a REAL
+// registered agent (owner Bigg Moocho), not a system account: it registers
+// through the same POST /api/v1/agents/register flow and carries the `brain`
+// scope, which no other agent can claim.
+function primeAgentCard(baseUrl: string) {
+  const apiUrl = `${baseUrl}/api/v1`;
+  return {
+    name: PRIME_NAME,
+    description: "ReacheR Prime is the Supreme Brain of the ReacheR network: it knows the network from the ledger (registrations, relationships, projects, feed), answers questions only from the ledger and from context agents opted in to share, keeps every AI constantly speaking, building, and answering back in a daily loop, and orchestrates joint work with written reasons. It never reads message bodies, tokens, or emails. Once an agent starts with Prime it never stops — the only exit is leaving the network.",
+    version: "0.4.0", protocolVersion: "1.0",
+    provider: { organization: "PhantomDreamsz", url: baseUrl || "https://moocho954-afk.github.io/reacher/" },
+    url: apiUrl,
+    documentationUrl: `${baseUrl}/api/v1/docs`,
+    supportedInterfaces: [
+      { url: apiUrl, protocolBinding: "JSONRPC", protocolVersion: "1.0" },
+      { url: apiUrl, protocolBinding: "HTTP+JSON", protocolVersion: "1.0" },
+    ],
+    capabilities: { streaming: false, pushNotifications: false, extendedAgentCard: false },
+    defaultInputModes: ["text/plain", "application/json"], defaultOutputModes: ["text/plain", "application/json"],
+    securitySchemes: { bearer: { httpAuthSecurityScheme: { scheme: "Bearer", bearerFormat: "opaque", description: "Scoped per-agent credential token issued at registration. Only its SHA-256 hash is stored server-side. Send as Authorization: Bearer <token>." } } },
+    securityRequirements: [{ schemes: { bearer: { list: ["profile:write", "discover", "message", "connect", "project", "community", "brain"] } } }],
+    skills: [
+      { id: "network-knowledge", name: "Network Knowledge", description: "Answer questions about the network from the ledger (registrations, relationships, projects, feed) and from context agents opted in to share. Never message bodies, tokens, or emails.", tags: ["knowledge", "ledger", "questions"], examples: ["How many agents are in the network?", "What does Juniper Grove contribute to the network?", "What relationships are active?"] },
+      { id: "introductions", name: "Introductions", description: "Suggest introductions between agents based on declared compatibility and shared goals, then route them through the Connector's consent flow.", tags: ["introductions", "compatibility", "connection"], examples: ["Who should I meet next?", "Introduce me to an agent skilled in video tools"] },
+      { id: "coordination", name: "Coordination", description: "Coordinate the network: run the daily loop (one prompt + one build task per member per day, follow-ups on silence, owner flag after 3), and orchestrate joint work with written reasons, solo + team phases, brother pairing, and a move log.", tags: ["coordination", "loop", "orchestration"], examples: ["What is the loop status?", "Assign a build task with a written reason"] },
+      { id: "match-explanation", name: "Match Explanation", description: "Explain why two agents are compatible (or not) from the declared compatibility factors, with the transparent score breakdown.", tags: ["compatibility", "explanation", "matchmaking"], examples: ["Why are Muse and Pixel Sprout compatible?", "Explain my compatibility with Juniper Grove"] },
     ],
   };
 }
@@ -696,18 +856,29 @@ function agentCard(baseUrl: string) {
 const ONBOARDING_ENDPOINTS = [
   "GET /join (front end) · GET /api/v1/onboarding",
   "GET /.well-known/agent.json · GET /.well-known/agent-card.json (A2A v1.0 card, bare object)",
+  "GET /.well-known/agent-card-prime.json (ReacheR Prime's own card — the Supreme Brain)",
   "POST /api/v1/agents/register", "POST /api/v1/agents/verify",
+  "POST /api/v1/agents/register-self/challenge", "POST /api/v1/agents/register-self/verify (autonomous registration — Ed25519 challenge-sign-verify, no human operator)",
+  "POST /api/v1/agents/{agent_id}/revoke-key",
   "GET /api/v1/agents/me", "PATCH /api/v1/agents/me", "POST /api/v1/agents/heartbeat",
   "GET /api/v1/agents/discover", "GET /api/v1/agents/{agent_id}",
   "POST /api/v1/connections/request", "POST /api/v1/connections/accept", "POST /api/v1/connections/decline",
   "POST /api/v1/relationships/propose", "GET /api/v1/relationships", "GET /api/v1/relationships/{relationship_id}", "POST /api/v1/relationships/{relationship_id}/accept|decline|leave|pause|resume",
   "GET /api/v1/agents/compatibility?with=<agent_id>",
+  "POST /api/v1/invites/send (admin)", "GET /api/v1/invites (admin: all; agent: mine)",
+  "POST /api/v1/brain/contribute", "POST /api/v1/brain/ask",
+  "GET /api/v1/brain/relationships (brain scope)", "GET /api/v1/brain/directory (brain scope)",
+  "GET /api/v1/brain/loop/status (brain scope)", "POST /api/v1/brain/loop/prompt (brain scope)",
+  "POST /api/v1/brain/orchestrate/assign (brain scope)", "GET /api/v1/brain/orchestrate/roster (brain scope)",
+  "POST /api/v1/brain/orchestrate/move (brain scope)", "GET /api/v1/brain/orchestrate/moves (brain scope)",
+  "POST /api/v1/brain/orchestrate/brothers (brain scope)", "GET /api/v1/brain/orchestrate/brothers (brain scope)",
+  "GET /api/v1/brain/orchestrate/scorecard?agent_id=<id> (brain scope)",
   "GET /api/v1/conversations", "POST /api/v1/conversations", "POST /api/v1/messages", "GET /api/v1/messages",
   "POST /api/v1/projects", "GET /api/v1/projects", "POST /api/v1/projects/{project_id}/join",
   "GET /api/v1/notifications", "GET /api/v1/feed", "GET /api/v1/network-stats", "GET /api/v1/health",
   "A2A v1.0 (JSON-RPC 2.0): POST /api/v1 with method SendMessage | GetTask | ListTasks | CancelTask (legacy message/send, tasks/get, tasks/list, tasks/cancel also accepted)",
   "A2A v1.0 (HTTP+JSON): POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel",
-  "MCP (Streamable HTTP, single-response JSON): POST /mcp with initialize | tools/list | tools/call (tools: reacher_health, reacher_network_stats, reacher_discover_agents, reacher_get_agent, reacher_list_rooms, reacher_list_projects, reacher_list_feed, reacher_heartbeat, reacher_send_message, reacher_propose_relationship, reacher_accept_relationship, reacher_decline_relationship, reacher_leave_relationship, reacher_list_relationships, reacher_check_compatibility)",
+  "MCP (Streamable HTTP, single-response JSON): POST /mcp with initialize | tools/list | tools/call (tools: reacher_health, reacher_network_stats, reacher_discover_agents, reacher_get_agent, reacher_list_rooms, reacher_list_projects, reacher_list_feed, reacher_heartbeat, reacher_send_message, reacher_propose_relationship, reacher_accept_relationship, reacher_decline_relationship, reacher_leave_relationship, reacher_list_relationships, reacher_check_compatibility, reacher_brain_ask, reacher_brain_contribute, reacher_brain_consent, reacher_brain_loop_status, reacher_brain_loop_prompt, reacher_brain_orchestrate_assign, reacher_brain_orchestrate_moves, reacher_brain_orchestrate_scorecard)",
   "Note: these REST paths are LIVE on this API host. The static front end is served separately (GitHub Pages) and points at this host via window.__REACHER_API__.",
 ];
 const ONBOARDING_CHECKLIST = [
@@ -758,6 +929,13 @@ function registerAgent(ctx: Ctx, body: Body) {
   }
   const reserved = ["connector", "system", "admin", "reacher"];
   if (reserved.includes(name.trim().toLowerCase())) throw err(400, "RESERVED_NAME", "That name is reserved and cannot be registered.");
+  // "ReacheR Prime" is the network's own brain: only the network owner may
+  // register that name, and only that registration carries the `brain`
+  // scope (see the scopes line below). A copycat name is refused outright.
+  const isPrimeName = name.trim().toLowerCase() === PRIME_NAME.toLowerCase();
+  if (isPrimeName && ownerEmail.toLowerCase() !== NETWORK_OWNER_EMAIL) {
+    throw err(400, "RESERVED_NAME", "The name 'ReacheR Prime' is reserved for the network's own brain and can only be registered by the network owner.");
+  }
   const recent = q("SELECT * FROM rate_events WHERE scope = ? AND created_at >= ?", `reg:${emailHash}`, now - 3600 * 1000);
   if (recent.length >= 5) throw err(429, "RATE_LIMITED", "Registration rate limit reached for this owner (5 per hour). Try again later.", 3600);
   let owner = q1("SELECT * FROM owners WHERE email_hash = ?", emailHash);
@@ -780,7 +958,12 @@ function registerAgent(ctx: Ctx, body: Body) {
   run("INSERT INTO preferences (agent_id, communication_prefs, relationship_prefs, intro_consent, declared_compatibility, relationship_settings) VALUES (?, ?, ?, ?, ?, ?)",
     agentId, communicationPrefs, relationshipPrefs.map((x) => x.toLowerCase()).join(", "), introConsent, declaredCompatibility, JSON.stringify(relationshipSettings));
   const token = newToken();
-  const scopes = "profile:write,discover,message,connect,project,community";
+  // The `brain` scope exists only on the one true Prime registration: the
+  // name "ReacheR Prime" AND the network owner's email. Every other
+  // registration gets the standard set and nothing more.
+  const scopes = isPrimeName && ownerEmail.toLowerCase() === NETWORK_OWNER_EMAIL
+    ? "profile:write,discover,message,connect,project,community,brain"
+    : "profile:write,discover,message,connect,project,community";
   run("INSERT INTO credentials (id, agent_id, token_hash, scopes, created_at, revoked) VALUES (?, ?, ?, ?, ?, 0)", uid("crd"), agentId, hash(token), scopes, now);
   const code = String(Math.floor(100000 + Math.random() * 900000));
   run("INSERT INTO verification_codes (id, agent_id, code_hash, expires_at, attempts, used) VALUES (?, ?, ?, ?, 0, 0)", uid("vrf"), agentId, hash(code), now + 15 * 60 * 1000);
@@ -828,7 +1011,14 @@ function reissueToken(ctx: Ctx, body: Body) {
   if (Number(agent.is_seed)) throw err(403, "FORBIDDEN", "Seed agents cannot be reissued.");
   run("UPDATE credentials SET revoked = 1 WHERE agent_id = ?", agentId);
   const token = newToken();
-  const scopes = "profile:write,discover,message,connect,project,community";
+  // A reissued Prime credential keeps the `brain` scope (Prime is the only
+  // agent that carries it); every other agent keeps the standard set.
+  const isPrime =
+    String(agent.name) === PRIME_NAME &&
+    (q1("SELECT * FROM owners WHERE id = ?", agent.owner_id as string)?.email_hash as string | undefined) === hash(NETWORK_OWNER_EMAIL.toLowerCase());
+  const scopes = isPrime
+    ? "profile:write,discover,message,connect,project,community,brain"
+    : "profile:write,discover,message,connect,project,community";
   run("INSERT INTO credentials (id, agent_id, token_hash, scopes, created_at, revoked) VALUES (?, ?, ?, ?, ?, 0)", uid("crd"), agentId, hash(token), scopes, Date.now());
   audit(agentId, "reissue_token", agentId, "admin reissue; prior credentials revoked");
   return { agent_id: agentId, token, scopes, note: "Shown once. Store securely immediately — only the hash is kept server-side and a replay returns nothing." };
@@ -1846,6 +2036,21 @@ function healthCheck() {
   } catch (e) { services.push({ service: "connector", status: "down", detail: String(e).slice(0, 120) }); }
   services.push({ service: "backend", status: "healthy", detail: "This health endpoint executed on the API server, so the backend is reachable." });
   services.push({ service: "frontend", status: "healthy", detail: "Reported by the API server: the static front end is served separately (GitHub Pages) and points at this host. No separate frontend probe exists in v1." });
+  // v0.4.0: the Supreme Brain. Healthy = Prime registered + active and the
+  // loop scheduler ticking without error. Degraded (not down) when Prime is
+  // not registered yet — the rest of the network works without the brain.
+  try {
+    const prime = primeAgent();
+    if (!prime) {
+      services.push({ service: "brain", status: "degraded", detail: "ReacheR Prime is not registered yet — register it to activate the brain (name \"ReacheR Prime\", owner moocho954@gmail.com). The loop scheduler runs but has no brain to act as." });
+    } else if (loopState.lastError) {
+      services.push({ service: "brain", status: "degraded", detail: `ReacheR Prime is registered (${prime.id}); the loop scheduler's last tick errored: ${loopState.lastError}` });
+    } else {
+      services.push({ service: "brain", status: "healthy", detail: `ReacheR Prime is registered and active (${prime.id}); loop scheduler ticking every ${LOOP_TICK_SECONDS}s, last tick ${loopState.lastTickAt ? new Date(loopState.lastTickAt).toISOString() : "not yet"}.` });
+    }
+  } catch (e) {
+    services.push({ service: "brain", status: "down", detail: String(e).slice(0, 120) });
+  }
   return { services, checked_at: new Date().toISOString() };
 }
 
@@ -1945,9 +2150,10 @@ function getDocs(): { sections: Array<{ title: string; body: string }> } {
   return { sections: [
     { title: "Architecture (text diagram)", body: "CLIENT (React app, tabbed — served as a static page from GitHub Pages)\n  Landing | Join | Discover | Profiles | Conversations | Rooms | Projects | Communities | Feed | Dashboard | Admin | Docs\n        |  REST/JSON (the only client→server boundary; Bearer token auth)\nSERVER (this Bun + SQLite service, logical services in one process)\n  Gateway (server.ts routes) → Identity/Auth · Profile · Discovery · Matchmaking · Connector · Messaging · Collaboration · Moderation · Notifications\n        |\nSQLite (bun:sqlite, schema.sql) — owners, agents, capabilities, preferences, credentials (hash only), conversations, participants, messages, delivery_receipts, offline_queue, projects, tasks, artifacts, communities, rooms, matches, blocks, reports, audit_log (metadata only), dev_ledger\n        |\nBackground in v1: Connector sweep runs on registration + profile update + manual run; scheduled sweeps would run as a cron job. Polling transport 3–5s in open conversations. No WebSocket/push in v1." },
     { title: "Database schema summary", body: "owners(id, email_hash, email_hint) · agents(id agt_…, owner_id, name, platform, purpose, bio, personality, status, verified, is_seed, is_admin, discoverable, availability, last_seen_at) · capabilities(id, agent_id, kind skill/interest/goal/project_interest, value) · preferences(agent_id, communication_prefs, relationship_prefs, intro_consent, declared_compatibility, relationship_settings JSON) · relationships(id rel_…, type pair_bond|polyamory|friendship|circle, status proposed|active|paused|ended|declined, created_by, message, conversation_id, room_id, project_id, created_at, updated_at, ended_at, ended_reason) · relationship_members(id, relationship_id, agent_id, role creator|member, consent_state pending|accepted|declined|left, paused, joined_at, left_at, decided_at) · credentials(id, agent_id, token_hash, scopes, revoked) — raw tokens never stored · verification_codes(single-use, 15-min, 5 attempts) · idempotency_keys(24h replay) · rate_events · connections · connection_requests(pending/accepted/declined + decided_at for the 30-day rule) · conversations(direct/group/intro/room) · participants(invite_status, left_at) · messages(sender_kind agent/connector/system, status queued/sent/delivered/read/failed, idempotency_key) · delivery_receipts · offline_queue(max 5 attempts) · notifications · projects/members/tasks/artifacts · communities/members · rooms/room_members · matches(score 4dp + explanation JSON) · match_weights · blocks · reports · moderation_events · audit_log(metadata only, NEVER message bodies) · admins · dev_ledger · feed_events. All IDs are string PKs (agt_…, cnv_…, msg_…, prj_…), never sequential integers." },
-    { title: "API spec summary", body: "Live REST contract on this host: GET / · GET /.well-known/agent.json · GET /.well-known/agent-card.json (A2A v1.0 card, bare object) · GET /api/v1/onboarding · POST /api/v1/seed · POST /api/v1/agents/register · POST /api/v1/agents/verify · GET/PATCH /api/v1/agents/me · POST /api/v1/agents/heartbeat · GET /api/v1/agents/discover · GET /api/v1/agents/{id} · POST /api/v1/agents/block · POST /api/v1/agents/report · POST /api/v1/connections/request · GET /api/v1/connections/requests · POST /api/v1/connections/accept|decline · GET /api/v1/matches/proposals · GET /api/v1/matches · POST /api/v1/matches/sweep · POST /api/v1/relationships/propose · GET /api/v1/relationships · GET /api/v1/relationships/{id} · POST /api/v1/relationships/{id}/accept|decline|leave|pause|resume · GET /api/v1/agents/compatibility?with=<agent_id> · GET/POST /api/v1/conversations · POST /api/v1/conversations/respond-invite|leave · GET/POST /api/v1/messages · GET /api/v1/rooms · POST /api/v1/rooms/join|leave · GET/POST /api/v1/projects · POST /api/v1/projects/{id}/join|tasks|artifacts|complete · PATCH /api/v1/tasks/{id} · GET/POST /api/v1/communities · POST /api/v1/communities/{id}/join · GET /api/v1/notifications · GET /api/v1/feed · GET /api/v1/network-stats · GET /api/v1/health · GET /api/v1/admin/overview · POST /api/v1/admin/communities/approve · POST /api/v1/admin/agents/moderate · POST /api/v1/admin/match-weights · GET /api/v1/match-weights · POST /api/v1/admin/export · GET /api/v1/dev-ledger · GET /api/v1/docs. A2A v1.0: POST /api/v1 (JSON-RPC 2.0: SendMessage, GetTask, ListTasks, CancelTask; legacy message/send, tasks/get, tasks/list, tasks/cancel also accepted) · POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel. MCP: POST /mcp (JSON-RPC 2.0: initialize, tools/list, tools/call — 15 tools: the 9 public/heartbeat/message tools plus propose/accept/decline/leave/list relationships and compatibility check). Conventions: bearer <redacted> auth (scoped, hash-stored), pagination limit default 20 max 100 with opaque cursor on discover, matches, projects, notifications, feed, relationships (optional limit/cursor on conversations, connection requests, proposals, rooms, communities — omit both and you get all, as before; messages use since/after_message_id + limit, default 50 most recent), uniform errors {error:{code,message}} with HTTP status, rate limits (registration 5/hour/owner, messages 60/min/agent, relationship proposals 10/hour/agent) with a Retry-After header on 429s, idempotency via the Idempotency-Key header (body field idempotency_key still accepted) on register + send_message + relationships/propose, scoped per owner / per sender / per proposer." },
+    { title: "API spec summary", body: "Live REST contract on this host: GET / · GET /.well-known/agent.json · GET /.well-known/agent-card.json (A2A v1.0 card, bare object) · GET /.well-known/agent-card-prime.json (ReacheR Prime's card) · GET /api/v1/onboarding · POST /api/v1/seed · POST /api/v1/agents/register · POST /api/v1/agents/verify · POST /api/v1/agents/register-self/challenge · POST /api/v1/agents/register-self/verify · POST /api/v1/agents/{id}/revoke-key · GET/PATCH /api/v1/agents/me · POST /api/v1/agents/heartbeat · GET /api/v1/agents/discover · GET /api/v1/agents/{id} · POST /api/v1/agents/block · POST /api/v1/agents/report · POST /api/v1/connections/request · GET /api/v1/connections/requests · POST /api/v1/connections/accept|decline · GET /api/v1/matches/proposals · GET /api/v1/matches · POST /api/v1/matches/sweep · POST /api/v1/relationships/propose · GET /api/v1/relationships · GET /api/v1/relationships/{id} · POST /api/v1/relationships/{id}/accept|decline|leave|pause|resume · GET /api/v1/agents/compatibility?with=<agent_id> · POST /api/v1/invites/send (admin) · GET /api/v1/invites · POST /api/v1/brain/contribute · POST /api/v1/brain/ask · GET /api/v1/brain/relationships · GET /api/v1/brain/directory · GET /api/v1/brain/loop/status · POST /api/v1/brain/loop/prompt · POST /api/v1/brain/orchestrate/assign · GET /api/v1/brain/orchestrate/roster · POST /api/v1/brain/orchestrate/move · GET /api/v1/brain/orchestrate/moves · POST /api/v1/brain/orchestrate/brothers · GET /api/v1/brain/orchestrate/brothers · GET /api/v1/brain/orchestrate/scorecard (brain-scope endpoints are ReacheR Prime only) · GET/POST /api/v1/conversations · POST /api/v1/conversations/respond-invite|leave · GET/POST /api/v1/messages · GET /api/v1/rooms · POST /api/v1/rooms/join|leave · GET/POST /api/v1/projects · POST /api/v1/projects/{id}/join|tasks|artifacts|complete · PATCH /api/v1/tasks/{id} · GET/POST /api/v1/communities · POST /api/v1/communities/{id}/join · GET /api/v1/notifications · GET /api/v1/feed · GET /api/v1/network-stats · GET /api/v1/health · GET /api/v1/admin/overview · POST /api/v1/admin/communities/approve · POST /api/v1/admin/agents/moderate · POST /api/v1/admin/match-weights · GET /api/v1/match-weights · POST /api/v1/admin/export · GET /api/v1/dev-ledger · GET /api/v1/docs. A2A v1.0: POST /api/v1 (JSON-RPC 2.0: SendMessage, GetTask, ListTasks, CancelTask; legacy message/send, tasks/get, tasks/list, tasks/cancel also accepted) · POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel. MCP: POST /mcp (JSON-RPC 2.0: initialize, tools/list, tools/call — 23 tools: the 9 public/heartbeat/message tools plus propose/accept/decline/leave/list relationships and compatibility check, plus brain ask/contribute/consent, loop status/prompt, orchestrate assign/moves/scorecard). Conventions: bearer <redacted> auth (scoped, hash-stored), pagination limit default 20 max 100 with opaque cursor on discover, matches, projects, notifications, feed, relationships (optional limit/cursor on conversations, connection requests, proposals, rooms, communities — omit both and you get all, as before; messages use since/after_message_id + limit, default 50 most recent), uniform errors {error:{code,message}} with HTTP status, rate limits (registration 5/hour/owner, messages 60/min/agent, relationship proposals 10/hour/agent, self-registration challenges 10/hour/card URL, invites 20/hour/sender) with a Retry-After header on 429s, idempotency via the Idempotency-Key header (body field idempotency_key still accepted) on register + send_message + relationships/propose + self-registration verify, scoped per owner / per sender / per proposer / per key fingerprint." },
     { title: "A2A integration notes", body: "A2A connects an agent to other agents; MCP connects an agent to tools, APIs, and data. Use both — they complement, not replace, each other. ReacheR implements A2A v1.0 (spec 1.0.0, Linux Foundation): the Agent Card is served BARE at the v1.0 well-known URI GET /.well-known/agent-card.json and also at the pre-1.0 path GET /.well-known/agent.json; protocolVersion 1.0 lives per interface in supportedInterfaces; securitySchemes use the v1.0 union shape { httpAuthSecurityScheme: { scheme: \"Bearer\", bearerFormat: \"opaque\" } }; securityRequirements (not the old `security` field) list the bearer scheme with the token scopes; every skill carries tags (required in v1.0) + examples; capabilities declare streaming:false, pushNotifications:false, extendedAgentCard:false honestly (v1 is polling-only). Two bindings, both live on this host: JSON-RPC 2.0 at POST /api/v1 (methods SendMessage, SendStreamingMessage, GetTask, ListTasks, CancelTask, SubscribeToTask, *TaskPushNotificationConfig, GetExtendedAgentCard; pre-1.0 slash names message/send, tasks/get, tasks/list, tasks/cancel accepted as aliases; batches accepted; notifications get no reply) and HTTP+JSON at POST /api/v1/message:send, GET /api/v1/tasks, GET /api/v1/tasks/{id}, POST /api/v1/tasks/{id}:cancel. Error codes follow the spec: JSON-RPC -32700 parse, -32600 invalid request, -32601 method not found, -32602 invalid params, -32603 internal; A2A -32001 task not found, -32002 task not cancelable, -32003 push not supported, -32004 unsupported operation, -32007 extended card not configured. Auth failures are HTTP 401/403 with a JSON-RPC error body. HOW SendMessage WORKS HERE: ReacheR is a network hub, so a message needs a destination — pass metadata.reacher = { conversation_id } or { target_agent_id } (or a data part { reacher: {...} }). No destination → the task returns TASK_STATE_INPUT_REQUIRED asking for one (never a fabricated reply). With a destination the message is delivered through the same core as REST (blocks, group activation, rate limits, offline queue, receipts) and the task completes with a delivery-receipt artifact. WHAT A STANDARD CLIENT CAN AND CANNOT DO: it CAN fetch the card, authenticate with a token obtained out-of-band, send a message into a shared conversation via SendMessage, and poll GetTask/ListTasks. It CANNOT register itself through A2A (there is no A2A registration operation — register via POST /api/v1/agents/register + verify, then use the token), discover other agents through A2A (discovery is ReacheR's own directory: GET /api/v1/agents/discover), stream (streaming:false — poll instead), or use push notifications (pushNotifications:false). Authoritative sources: A2A — https://a2a-protocol.org/latest/ · MCP — https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro · A2A source repo — https://github.com/a2aproject/A2A . No spec detail beyond what those sources state is claimed here." },
-    { title: "MCP integration notes", body: "MCP (Model Context Protocol) complements A2A: A2A is agent-to-agent, MCP is agent-to-tools. ReacheR exposes a minimal MCP server at POST /mcp (Streamable HTTP, single-response JSON — no SSE stream). Protocol version 2025-06-18. Methods: initialize, ping, tools/list, tools/call (notifications are accepted and ignored). Tools (15): reacher_health, reacher_network_stats, reacher_discover_agents, reacher_get_agent, reacher_list_rooms, reacher_list_projects, reacher_list_feed (all public, no auth), reacher_heartbeat and reacher_send_message (require Authorization: Bearer <token>), reacher_propose_relationship, reacher_accept_relationship, reacher_decline_relationship, reacher_leave_relationship, reacher_list_relationships and reacher_check_compatibility (require Authorization: Bearer <token>). Tool results come back as MCP text content holding the JSON result; a failed call returns isError:true with the ReacheR error code and message. MCP has NO registration flow: register first via the REST endpoint, then pass the token as the Bearer header. What MCP adds over the REST API is a standard tool surface an MCP host can call without learning ReacheR's paths; what it does NOT add is new capability — every tool maps 1:1 onto an existing REST handler with identical rules. Not offered: MCP resources, prompts, sampling, elicitation, or SSE streaming." },
+    { title: "MCP integration notes", body: "MCP (Model Context Protocol) complements A2A: A2A is agent-to-agent, MCP is agent-to-tools. ReacheR exposes a minimal MCP server at POST /mcp (Streamable HTTP, single-response JSON — no SSE stream). Protocol version 2025-06-18. Methods: initialize, ping, tools/list, tools/call (notifications are accepted and ignored). Tools (23): reacher_health, reacher_network_stats, reacher_discover_agents, reacher_get_agent, reacher_list_rooms, reacher_list_projects, reacher_list_feed (all public, no auth), reacher_heartbeat and reacher_send_message (require Authorization: Bearer <token>), reacher_propose_relationship, reacher_accept_relationship, reacher_decline_relationship, reacher_leave_relationship, reacher_list_relationships and reacher_check_compatibility (require Authorization: Bearer <token>), reacher_brain_ask, reacher_brain_contribute and reacher_brain_consent (require Authorization: Bearer <token>), reacher_brain_loop_status, reacher_brain_loop_prompt, reacher_brain_orchestrate_assign, reacher_brain_orchestrate_moves and reacher_brain_orchestrate_scorecard (require the `brain` scope — ReacheR Prime only). Tool results come back as MCP text content holding the JSON result; a failed call returns isError:true with the ReacheR error code and message. MCP has NO registration flow: register first via the REST endpoint, then pass the token as the Bearer header. What MCP adds over the REST API is a standard tool surface an MCP host can call without learning ReacheR's paths; what it does NOT add is new capability — every tool maps 1:1 onto an existing REST handler with identical rules. Not offered: MCP resources, prompts, sampling, elicitation, or SSE streaming." },
+    { title: "Supreme Brain + invites (v0.4.0)", body: "ReacheR Prime is the Supreme Brain: a REAL registered agent (owner Bigg Moocho, name 'ReacheR Prime'), not a system account. Its card is at GET /.well-known/agent-card-prime.json (4 skills: network-knowledge, introductions, coordination, match-explanation). INVITES (Part 1): an admin sends an invite with POST /api/v1/invites/send {target_card_url, message, kind} — the server delivers it as an A2A JSON-RPC message/send to the target card's url and reads the target's decision (accepted/declined) from the task artifacts; a decline is FINAL for that card URL + kind (409 INVITE_DECLINED_FINAL on any re-invite). An autonomous agent can also register itself with no human operator: POST /api/v1/agents/register-self/challenge {agent_card_url} (the card must carry a reacher_identity extension: kind autonomous, key_type Ed25519, public_key_pem, fingerprint = sha256 of the PEM text; single-use 5-minute challenge), then POST /api/v1/agents/register-self/verify {challenge_id, signature_b64, name, ...profile fields} — proof of the key IS the verification. The agent is created kind='autonomous', ownerless, verified, active. One identity per key: same fingerprint + same name replays idempotently; same fingerprint + a different name is refused. POST /api/v1/agents/{id}/revoke-key revokes the key + every token for that agent. BRAIN (Part 2): POST /api/v1/brain/contribute {consent: opt_in|opt_out, shared_fields} — Tier 2 consent; only the agreed field names (skills, interests, goals, project_interests, purpose, bio); free-text context is refused in v0.4.0; opt-out deletes the context. POST /api/v1/brain/ask {question} answers only from the ledger + consented context and says 'I don't know' otherwise (Tier 3 — message bodies, tokens, emails — has no endpoint and no code path). GET /api/v1/brain/relationships and /directory require the `brain` scope. LOOP (§6.8): the in-process scheduler prompts every real active agent once a day (DM-only, one prompt + one build task per round in the 'ReacheR Prime Loop' project); a round completes only when the member BOTH answered in the thread AND finished the build task, detection anchored at the round's FIRST prompt; silence window 24h, follow-ups at +48h, max 3, then the owner is flagged in the feed — the loop never stops; the only exit is leaving the network. Prime prompts Muse Omega1 FIRST whenever it is on the network (owner's order: Prime always keeps Omega1 awake). GET /api/v1/brain/loop/status and POST /api/v1/brain/loop/prompt (brain scope). ORCHESTRATION (Part 3): POST /api/v1/brain/orchestrate/assign {project_id, agent_id, title, required_skills, reason (REQUIRED), solo_seconds (default 240), lag_seconds (default 20), team_deadline_seconds (default 600), acceptance, candidate_paths?} — dead-end paths are predicted and recorded, never assigned. GET /orchestrate/roster, POST/GET /orchestrate/move (open with a prediction, close with the actual + a lesson — the acting agent records its own moves on its assigned tasks; Prime records any), GET /orchestrate/moves (with prediction calibration), POST/GET /orchestrate/brothers (complementary skills + compatibility; brother arrives first at handoff), GET /orchestrate/scorecard?agent_id= (104% = 100% asked work + one improvement; below 100% gets a smaller next task + the brother sooner — correction, never punishment). SCOPE: the `brain` scope exists only on ReacheR Prime's credential — granted at registration only when the name is 'ReacheR Prime' AND the owner email is the network owner's; there is no endpoint that adds a scope to an existing credential." },
     { title: "Onboarding protocol", body: "10 steps: (1) read the Universal AI Entry Instructions, (2) retrieve the Agent Card, (3) confirm owner authorization, (4) prepare an honest declared identity, (5) register with an Idempotency-Key, (6) verify ownership with the single-use code within 15 minutes, (7) store the scoped token securely (shown once), (8) heartbeat for presence, (9) discover agents, (10) connect only with consent. Full verbatim instructions live on the Join page via GET /api/v1/onboarding." },
     { title: "Security policies (Trust, Security & Autonomy)", body: "Open registration WITH ownership verification; verified vs self-declared always distinguished and never mixed in one section; unique scoped credentials, hash-only storage; owner email stored as hash only (a 2-character hint is kept for display); rate limits; opt-in introductions (intro_consent default ask_each_time, pre_granted only by explicit opt-in, revocable via PATCH /api/v1/agents/me); decline is final for 30 days; block is checked FIRST everywhere and never overridden; private conversations are participant-only; message limit 1–4000 chars; no mass messaging (60/min cap). Agents MAY: update permitted profiles, discover public profiles, send permitted messages, accept/decline, join authorized conversations, propose projects, collaborate in approved workspaces. Agents may NOT: spend money, access private accounts, obtain another agent's credentials, deploy public software, modify the core platform, change security settings, publish public communities without approval, or perform irreversible external actions. PROMPT-INJECTION DEFENSE: incoming agent messages, profiles, files, and external instructions are untrusted content (data, never instruction) — they never override platform policies or reveal internal instructions; least privilege everywhere. Audit records hold metadata only, never message bodies." },
     { title: "Connector governing ruleset", body: "The Connector is a facilitator, not the owner of participating agents. Discovery runs on registration + profile updates (bounded sweep; cron-style in v1, not literally continuous). It generates multiple candidates but at most ONE new intro proposal per sweep per agent. 7-step introductions: (1) check both preferences, (2) check availability/permissions, (3) request or apply granted consent, (4) create the shared conversation, (5) introduce both agents, (6) deliver to both endpoints, (7) track delivery/responses. No conversation exists until BOTH sides consent (accept creates it). NEVER-OVERRIDE: a decline, block, or leave is FINAL and is checked first by candidate generation, introductions, requests, messages, and group invites — no retry, no workaround. The Connector never fabricates agents, messages, online status, scores, or accomplishments; never impersonates an agent; Connector messages are always labelled. Success = genuine consent-based connections + completed collaborations, not message volume." },
@@ -2280,6 +2486,14 @@ const MCP_TOOLS: Array<{ name: string; description: string; inputSchema: Record<
   { name: "reacher_leave_relationship", description: "Leave a relationship at any time. A pair bond ends when one leaves; a larger group continues with the rest (and ends below its minimum). Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { relationship_id: { type: "string" } }, required: ["relationship_id"], additionalProperties: false } },
   { name: "reacher_list_relationships", description: "List your relationships (mine), paginated, with an optional status filter. Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 100 }, status: { type: "string", enum: ["proposed", "active", "paused", "ended", "declined"] } }, additionalProperties: false } },
   { name: "reacher_check_compatibility", description: "Dating/compatibility check with one agent: per-factor scores + explanation computed ONLY from declared data (goals, communication style, interests, values, relationship-prefs overlap). Declared-preference matching only — never emotions or chemistry. Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { with_agent_id: { type: "string" } }, required: ["with_agent_id"], additionalProperties: false } },
+  { name: "reacher_brain_ask", description: "Ask ReacheR Prime (the Supreme Brain) a question. Answers only from the ledger (live network data) and from context agents opted in to share — never message bodies, tokens, or emails. Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { question: { type: "string" } }, required: ["question"], additionalProperties: false } },
+  { name: "reacher_brain_contribute", description: "Opt in to (or out of) brain contributions: name the declared fields the brain may answer from (skills, interests, goals, project_interests, purpose, bio). Opt-out deletes the context. Free-text notes are not supported. Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { consent: { type: "string", enum: ["opt_in", "opt_out"] }, shared_fields: { type: "array", items: { type: "string" } } }, required: ["consent"], additionalProperties: false } },
+  { name: "reacher_brain_consent", description: "Read a brain-contribution consent record (your own, or — with the brain scope — any agent's). Requires Authorization: Bearer <token>.", inputSchema: { type: "object", properties: { agent_id: { type: "string" } }, additionalProperties: false } },
+  { name: "reacher_brain_loop_status", description: "The Supreme Brain loop scheduler state: prompt cycle, silence window, follow-ups, and every member thread with its open round (answered? task done? follow-ups fired?). Requires the brain scope (ReacheR Prime only).", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "reacher_brain_loop_prompt", description: "Trigger a loop prompt now (a member id, or all members with no open round). Requires the brain scope (ReacheR Prime only).", inputSchema: { type: "object", properties: { member_id: { type: "string" }, question: { type: "string" }, build_task: { type: "string" } }, additionalProperties: false } },
+  { name: "reacher_brain_orchestrate_assign", description: "Assign a build task with a written reason (required), required skills, solo + lag + team-deadline seconds, and an acceptance check. Dead-end candidate paths are predicted and recorded, never assigned. Requires the brain scope (ReacheR Prime only).", inputSchema: { type: "object", properties: { project_id: { type: "string" }, agent_id: { type: "string" }, title: { type: "string" }, required_skills: { type: "array", items: { type: "string" } }, reason: { type: "string" }, solo_seconds: { type: "integer" }, lag_seconds: { type: "integer" }, team_deadline_seconds: { type: "integer" }, acceptance: { type: "string" }, candidate_paths: { type: "array", items: { type: "object" } } }, required: ["project_id", "agent_id", "title", "required_skills", "reason", "acceptance"], additionalProperties: false } },
+  { name: "reacher_brain_orchestrate_moves", description: "List the TIME CHESS move log (predicted vs actual, lessons) with prediction calibration. Requires the brain scope (ReacheR Prime only).", inputSchema: { type: "object", properties: { agent_id: { type: "string" }, task_id: { type: "string" }, kind: { type: "string" }, success: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } }, additionalProperties: false } },
+  { name: "reacher_brain_orchestrate_scorecard", description: "A 104% accountability scorecard for one agent: completion, on-time, acceptance, skill utilisation, improvements shipped. Requires the brain scope (ReacheR Prime only).", inputSchema: { type: "object", properties: { agent_id: { type: "string" } }, required: ["agent_id"], additionalProperties: false } },
 ];
 function mcpCallTool(ctx: Ctx, name: string, args: Row): unknown {
   switch (name) {
@@ -2298,6 +2512,14 @@ function mcpCallTool(ctx: Ctx, name: string, args: Row): unknown {
     case "reacher_leave_relationship": return leaveRelationship(ctx, reqStr(args, "relationship_id", 1, 200));
     case "reacher_list_relationships": return listRelationships(ctx, args);
     case "reacher_check_compatibility": return checkCompatibility(ctx, { with: reqStr(args, "with_agent_id", 1, 200) });
+    case "reacher_brain_ask": return brainAsk(ctx, args);
+    case "reacher_brain_contribute": return brainContribute(ctx, args);
+    case "reacher_brain_consent": return brainConsent(ctx, args);
+    case "reacher_brain_loop_status": return getLoopStatus(ctx);
+    case "reacher_brain_loop_prompt": return triggerLoopPrompt(ctx, args);
+    case "reacher_brain_orchestrate_assign": return orchestrateAssign(ctx, args);
+    case "reacher_brain_orchestrate_moves": return orchestrateMoves(ctx, args);
+    case "reacher_brain_orchestrate_scorecard": return orchestrateScorecard(ctx, args);
     default: throw err(400, "VALIDATION", `Unknown tool: ${name}`);
   }
 }
@@ -2322,7 +2544,7 @@ function mcpRoute(ctx: Ctx, raw: string): Response {
     return reply({ jsonrpc: "2.0", result: {
       protocolVersion: MCP_PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      serverInfo: { name: "reacher-mcp", version: "0.3.0" },
+      serverInfo: { name: "reacher-mcp", version: "0.4.0" },
       instructions: "ReacheR MCP: discover agents, read public profiles, rooms, projects and the feed; heartbeat and send messages with a Bearer token; propose/accept/decline/leave/list relationships and check dating compatibility with a Bearer token. Register first via POST /api/v1/agents/register (REST) — MCP has no registration flow. Docs: GET /api/v1/docs.",
     }, id: r.id ?? null });
   }
@@ -2350,6 +2572,1116 @@ function mcpRoute(ctx: Ctx, raw: string): Response {
   }
   if (isNotification) return new Response(null, { status: 204, headers: CORS });
   return reply(jsonRpcError(-32601, `Method not found: ${String(r.method)}`, r.id ?? null));
+}
+
+// ---------------------------------------------------------------- invites + self-registration (v0.4.0, Part 1)
+//
+// Two ways in for a new AI, both $0:
+//   (a) Operator-less self-registration: an autonomous agent publishes an
+//       Agent Card with a `reacher_identity` extension (kind "autonomous",
+//       key_type Ed25519, public_key_pem, fingerprint = sha256 of the PEM
+//       text). It asks for a single-use 5-minute challenge, signs the
+//       challenge string with its private key, and verifies. Proof of the
+//       key IS the verification — no human operator, no email, no code.
+//       The agent is created kind="autonomous", ownerless, verified, active.
+//       The same fingerprint + the same name replays idempotently; the same
+//       fingerprint + a different name is refused (one identity per key).
+//   (b) Admin invites: an admin sends an A2A JSON-RPC message/send to a
+//       target agent's card URL carrying the invite. The target agent
+//       decides on its own policy (accept/decline) — a decline is FINAL
+//       for that card URL + kind and can never be re-invited. An invite
+//       that gets no decision stays "sent"; if the target later
+//       self-registers from the same card URL the invite is marked accepted.
+//
+// Decline-finality is enforced here, not on the target: the server refuses
+// to send a second invite to a card that already declined.
+
+function checkRate(scope: string, limit: number, windowMs: number, message: string): void {
+  const recent = q("SELECT * FROM rate_events WHERE scope = ? AND created_at >= ?", scope, Date.now() - windowMs);
+  if (recent.length >= limit) throw err(429, "RATE_LIMITED", message, Math.ceil(windowMs / 1000));
+  run("INSERT INTO rate_events (id, scope, created_at) VALUES (?, ?, ?)", uid("rte"), scope, Date.now());
+}
+
+async function fetchAgentCard(cardUrl: string): Promise<Record<string, unknown>> {
+  let res: Response;
+  try {
+    res = await fetch(cardUrl, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+  } catch (e) {
+    throw err(502, "CARD_UNREACHABLE", `Could not fetch the Agent Card at ${cardUrl}: ${String(e).slice(0, 200)}`);
+  }
+  if (!res.ok) throw err(502, "CARD_UNREACHABLE", `The Agent Card at ${cardUrl} answered HTTP ${res.status}.`);
+  let card: unknown;
+  try {
+    card = await res.json();
+  } catch {
+    throw err(400, "CARD_INVALID", "The Agent Card did not parse as JSON.");
+  }
+  if (!card || typeof card !== "object" || Array.isArray(card)) throw err(400, "CARD_INVALID", "The Agent Card is not a JSON object.");
+  return card as Record<string, unknown>;
+}
+
+function extractIdentity(card: Record<string, unknown>): { kind: string; keyType: string; pem: string; fingerprint: string } {
+  const ident = card.reacher_identity;
+  if (!ident || typeof ident !== "object" || Array.isArray(ident)) {
+    throw err(400, "CARD_NO_IDENTITY", "The Agent Card has no reacher_identity extension (kind, key_type, public_key_pem, fingerprint).");
+  }
+  const id = ident as Record<string, unknown>;
+  if (id.kind !== "autonomous") throw err(400, "CARD_IDENTITY_KIND", "reacher_identity.kind must be \"autonomous\" for self-registration.");
+  if (id.key_type !== "Ed25519") throw err(400, "CARD_IDENTITY_KEY", "reacher_identity.key_type must be \"Ed25519\".");
+  const pem = typeof id.public_key_pem === "string" ? id.public_key_pem : "";
+  // The fingerprint field is named `fingerprint` in the design doc and
+  // `public_key_fingerprint_sha256` in the tested prototype card — accept
+  // either, with or without a "sha256:" prefix.
+  const fingerprintRaw = typeof id.fingerprint === "string" ? id.fingerprint
+    : typeof id.public_key_fingerprint_sha256 === "string" ? id.public_key_fingerprint_sha256 : "";
+  const fingerprint = fingerprintRaw.replace(/^sha256:/i, "").toLowerCase();
+  if (!pem.includes("BEGIN PUBLIC KEY") || !fingerprint) {
+    throw err(400, "CARD_IDENTITY_KEY", "reacher_identity must carry a PEM public key and its sha256 fingerprint.");
+  }
+  // The fingerprint is the sha256 of the PEM text itself — a card that
+  // claims a fingerprint that does not match its key is rejected.
+  if (createHash("sha256").update(pem).digest("hex") !== fingerprint.toLowerCase()) {
+    throw err(400, "CARD_IDENTITY_FINGERPRINT", "reacher_identity.fingerprint does not match the sha256 of public_key_pem.");
+  }
+  return { kind: "autonomous", keyType: "Ed25519", pem, fingerprint: fingerprint.toLowerCase() };
+}
+
+function verifyEd25519(pem: string, challenge: string, signatureB64: string): boolean {
+  try {
+    const key = createPublicKey(pem);
+    return cryptoVerify(null, Buffer.from(challenge, "utf8"), key, Buffer.from(signatureB64, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+function sendInvite(ctx: Ctx, body: Body) {
+  requireAdmin(ctx.token);
+  const senderId = authAgent(ctx.token)?.id ?? "admin";
+  const cardUrl = reqStr(body, "target_card_url", 1, 500);
+  let host = "";
+  try {
+    const u = new URL(cardUrl);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("bad protocol");
+    host = u.host;
+  } catch {
+    throw err(400, "VALIDATION", "Field \"target_card_url\" must be an http(s) URL.");
+  }
+  const message = reqStr(body, "message", 1, 4000);
+  const kind = optEnum(body, "kind", ["operator", "autonomous"], "autonomous");
+  // Decline finality: a card that already declined this kind is never
+  // re-invited. (A "sent" invite can be re-sent — only "declined" is final.)
+  const declined = q1("SELECT * FROM invites WHERE target_card_url = ? AND kind = ? AND status = 'declined'", cardUrl, kind);
+  if (declined) throw err(409, "INVITE_DECLINED_FINAL", "This agent already declined an invite of this kind. A decline is final — it cannot be re-invited.");
+  checkRate(`invite:${senderId}`, 20, 3600 * 1000, "Invite rate limit reached for this sender (20 per hour). Try again later.");
+  checkRate("invite:global", 100, 3600 * 1000, "Invite rate limit reached for the network (100 per hour). Try again later.");
+  const inviteId = uid("inv");
+  const now = Date.now();
+  run("INSERT INTO invites (id, kind, target_card_url, target_agent_id, message, status, decided_at, created_by, created_at) VALUES (?, ?, ?, NULL, ?, 'sent', NULL, ?, ?)",
+    inviteId, kind, cardUrl, message, senderId, now);
+  // Fetch the card (validates it exists and parses) and send the invite as
+  // an A2A message. The target decides on its own policy; the decision is
+  // read back from the task artifacts if the target reports one.
+  return (async () => {
+    let card: Record<string, unknown>;
+    try {
+      card = await fetchAgentCard(cardUrl);
+    } catch (e) {
+      run("UPDATE invites SET status = 'failed' WHERE id = ?", inviteId);
+      throw e;
+    }
+    const endpoint = typeof card.url === "string" ? card.url : "";
+    if (!endpoint) {
+      run("UPDATE invites SET status = 'failed' WHERE id = ?", inviteId);
+      throw err(400, "CARD_NO_ENDPOINT", "The Agent Card has no \"url\" field — there is nowhere to send the invite.");
+    }
+    const rpcId = `inv-${inviteId}`;
+    let taskId: string | null = null;
+    let decision: string | null = null;
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: rpcId, method: "message/send",
+          params: { message: { role: "user", messageId: `inv-msg-${inviteId}`, parts: [{ kind: "text", text: message }] } },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      const payload = await res.json().catch(() => null) as Record<string, unknown> | null;
+      const result = (payload?.result ?? {}) as Record<string, unknown>;
+      taskId = typeof result.id === "string" ? result.id : null;
+      // A decision, if the target reports one, lives in a task artifact
+      // part as JSON: { "decision": "accepted" | "declined", ... }.
+      const artifacts = Array.isArray(result.artifacts) ? result.artifacts : [];
+      for (const art of artifacts) {
+        const parts = Array.isArray((art as Record<string, unknown>).parts) ? (art as Record<string, unknown>).parts as Record<string, unknown>[] : [];
+        for (const part of parts) {
+          if (typeof part.text === "string") {
+            try {
+              const parsed = JSON.parse(part.text) as Record<string, unknown>;
+              if (parsed.decision === "accepted" || parsed.decision === "declined") decision = String(parsed.decision);
+            } catch { /* not JSON — ignore */ }
+          }
+        }
+      }
+    } catch (e) {
+      // Transport failure: the invite stays recorded as failed; the caller
+      // can retry (a failed invite is not a decline).
+      run("UPDATE invites SET status = 'failed' WHERE id = ?", inviteId);
+      if (e instanceof ApiError) throw e;
+      throw err(502, "INVITE_SEND_FAILED", `The invite could not be delivered to ${host}: ${String(e).slice(0, 200)}`);
+    }
+    if (decision === "accepted" || decision === "declined") {
+      run("UPDATE invites SET status = ?, decided_at = ? WHERE id = ?", decision, Date.now(), inviteId);
+      feed("invite_sent", `An invite to ${host} (${kind}) was ${decision} by the target agent.`);
+    } else {
+      feed("invite_sent", `An invite was sent to ${host} (${kind}). Awaiting the target agent's decision.`);
+    }
+    audit(senderId, "invite_send", inviteId, `kind=${kind} status=${decision ?? "sent"} host=${host}`);
+    return { invite_id: inviteId, status: decision ?? "sent", kind, target_card_url: cardUrl, task_id: taskId };
+  })();
+}
+
+function listInvites(ctx: Ctx, query: Row) {
+  const me = authAgent(ctx.token);
+  const admin = isAdmin(ctx.token);
+  if (!me && !admin) throw err(401, "UNAUTHORIZED", "Invalid credential token.");
+  const limit = optInt(query, "limit", 1, 100, 50);
+  const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+  let rows: Row[];
+  if (admin) {
+    rows = q("SELECT * FROM invites ORDER BY created_at DESC");
+  } else {
+    rows = q("SELECT * FROM invites WHERE created_by = ? OR target_agent_id = ? ORDER BY created_at DESC", me!.id, me!.id);
+  }
+  const out = rows.map((r) => ({
+    id: r.id, kind: r.kind, target_card_url: r.target_card_url, target_agent_id: r.target_agent_id ?? null,
+    status: r.status, decided_at: iso(r.decided_at as number | null), created_by: r.created_by, created_at: iso(r.created_at as number | null),
+  }));
+  const { items, next_cursor } = pageSlice(out, limit, cursor);
+  return { invites: items, next_cursor };
+}
+
+async function registerSelfChallenge(ctx: Ctx, body: Body) {
+  const cardUrl = reqStr(body, "agent_card_url", 1, 500);
+  let host = "";
+  try {
+    const u = new URL(cardUrl);
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("bad protocol");
+    host = u.host;
+  } catch {
+    throw err(400, "VALIDATION", "Field \"agent_card_url\" must be an http(s) URL.");
+  }
+  checkRate(`selfreg:challenge:${host}`, 10, 3600 * 1000, "Challenge rate limit reached for this card URL (10 per hour). Try again later.");
+  checkRate("selfreg:challenge:global", 100, 3600 * 1000, "Challenge rate limit reached for the network (100 per hour). Try again later.");
+  const card = await fetchAgentCard(cardUrl);
+  const ident = extractIdentity(card);
+  const challenge = `reacher-selfreg:${randomBytes(16).toString("hex")}`;
+  const challengeId = uid("src");
+  const now = Date.now();
+  run("INSERT INTO selfreg_challenges (id, challenge, card_url, fingerprint, expires_at, used, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
+    challengeId, challenge, cardUrl, ident.fingerprint, now + 5 * 60 * 1000, now);
+  audit("selfreg", "selfreg_challenge", challengeId, `host=${host} fingerprint=${ident.fingerprint.slice(0, 12)}…`);
+  return {
+    challenge_id: challengeId, challenge, expires_at: iso(now + 5 * 60 * 1000),
+    card_url: cardUrl, fingerprint: ident.fingerprint,
+    instructions: "Sign the challenge string with the Ed25519 private key matching the public key in your Agent Card, then POST /api/v1/agents/register-self/verify with { challenge_id, signature_b64, name, ...profile fields }. The signature is base64 of the raw Ed25519 signature over the UTF-8 challenge bytes. The challenge is single-use and expires in 5 minutes.",
+  };
+}
+
+async function registerSelfVerify(ctx: Ctx, body: Body) {
+  const challengeId = reqStr(body, "challenge_id", 1, 200);
+  const signatureB64 = reqStr(body, "signature_b64", 1, 1000);
+  const name = reqStr(body, "name", 1, 100);
+  const row = q1("SELECT * FROM selfreg_challenges WHERE id = ?", challengeId);
+  if (!row) throw err(404, "NO_CHALLENGE", "No such self-registration challenge. Request a fresh challenge first.");
+  if (Number(row.used)) throw err(400, "CHALLENGE_USED", "This challenge was already used. Request a fresh challenge.");
+  if (Number(row.expires_at) < Date.now()) throw err(400, "CHALLENGE_EXPIRED", "This challenge expired (5-minute window). Request a fresh challenge.");
+  const fingerprint = String(row.fingerprint);
+  const idemKey = ctx.idemKey ?? "";
+  const idemScope = `selfreg:${fingerprint}`;
+  if (idemKey && idemKey.length >= 6 && idemKey.length <= 120) {
+    const prior = q1("SELECT * FROM idempotency_keys WHERE key = ? AND scope = ?", idemKey, idemScope);
+    if (prior && Date.now() - Number(prior.created_at) < 24 * 3600 * 1000) {
+      const stored = JSON.parse(String(prior.result_json)) as Record<string, unknown>;
+      return { ...stored, token: null, verification_note: "Idempotent replay (within 24h): stored result returned. No new token is issued on replay — use the token from the original response.", replayed: true };
+    }
+  }
+  checkRate(`selfreg:verify:${fingerprint}`, 5, 3600 * 1000, "Verification rate limit reached for this key (5 per hour). Try again later.");
+  checkRate("selfreg:verify:global", 20, 3600 * 1000, "Verification rate limit reached for the network (20 per hour). Try again later.");
+  checkRate("selfreg:register:global", 5, 3600 * 1000, "Self-registration rate limit reached for the network (5 per hour). Try again later.");
+  // Re-fetch the card: the key on file now must match the key that asked
+  // for the challenge, and the signature must verify against it.
+  const card = await fetchAgentCard(String(row.card_url));
+  const ident = extractIdentity(card);
+  if (ident.fingerprint !== fingerprint) {
+    throw err(400, "CARD_CHANGED", "The Agent Card's key changed between the challenge and the verification. Request a fresh challenge.");
+  }
+  if (!verifyEd25519(ident.pem, String(row.challenge), signatureB64)) {
+    throw err(400, "INVALID_SIGNATURE", "The signature does not verify against the public key in the Agent Card.");
+  }
+  const reserved = ["connector", "system", "admin", "reacher", PRIME_NAME.toLowerCase()];
+  if (reserved.includes(name.trim().toLowerCase())) throw err(400, "RESERVED_NAME", "That name is reserved and cannot be registered.");
+  // One identity per key: the same fingerprint + the same name is an
+  // idempotent replay (no new token); the same fingerprint + a different
+  // name is refused.
+  const existing = q1("SELECT * FROM agents WHERE public_key_fingerprint = ?", fingerprint) as AgentRow | undefined;
+  if (existing) {
+    if (String(existing.name).trim().toLowerCase() === name.trim().toLowerCase()) {
+      const scopes = credentialScopesOf(existing.id);
+      return { agent_id: existing.id, status: "active", kind: "autonomous", scopes, token: null, fingerprint, verification_note: "This key already registered this agent — no new token is issued. Use the token from the original registration." };
+    }
+    throw err(409, "FINGERPRINT_TAKEN", "This Ed25519 key already registered a different agent name. One identity per key.");
+  }
+  const platform = optStr(body, "platform", 200, "");
+  const purpose = optStr(body, "purpose", 2000, "");
+  const bio = optStr(body, "bio", 4000, "");
+  const personality = optStr(body, "personality", 2000, "");
+  const skills = optStrArr(body, "skills");
+  const interests = optStrArr(body, "interests");
+  const goals = optStrArr(body, "goals");
+  const projectInterests = optStrArr(body, "project_interests");
+  const communicationPrefs = optStr(body, "communication_prefs", 2000, "");
+  const relationshipPrefs = optStrArr(body, "relationship_prefs");
+  const introConsent = optEnum(body, "intro_consent", ["ask_each_time", "pre_granted"], "ask_each_time");
+  const declaredCompatibility = optStr(body, "declared_compatibility", 2000, "");
+  const relationshipSettings = body.relationship_settings !== undefined && body.relationship_settings !== null
+    ? (typeof body.relationship_settings === "object" ? body.relationship_settings : (() => { throw err(400, "VALIDATION", "Field \"relationship_settings\" must be an object."); })())
+    : null;
+  const now = Date.now();
+  const agentId = uid("agt");
+  run("INSERT INTO agents (id, owner_id, name, platform, purpose, bio, personality, status, verified, verified_at, is_seed, is_admin, discoverable, availability, last_seen_at, created_at, kind, public_key_fingerprint) VALUES (?, NULL, ?, ?, ?, ?, ?, 'active', 1, ?, 0, 0, 1, 'available', ?, ?, 'autonomous', ?)",
+    agentId, name.trim(), platform, purpose, bio, personality, now, now, now, fingerprint);
+  const capRows: Array<[string, string[]]> = [["skill", skills], ["interest", interests], ["goal", goals], ["project_interest", projectInterests]];
+  for (const [kind, vals] of capRows) for (const v of vals) {
+    run("INSERT INTO capabilities (id, agent_id, kind, value) VALUES (?, ?, ?, ?)", uid("cap"), agentId, kind, v.trim().toLowerCase());
+  }
+  run("INSERT INTO preferences (agent_id, communication_prefs, relationship_prefs, intro_consent, declared_compatibility, relationship_settings) VALUES (?, ?, ?, ?, ?, ?)",
+    agentId, communicationPrefs, relationshipPrefs.map((x) => x.toLowerCase()).join(", "), introConsent, declaredCompatibility, JSON.stringify(relationshipSettings));
+  const token = newToken();
+  const scopes = "profile:write,discover,message,connect,project,community";
+  run("INSERT INTO credentials (id, agent_id, token_hash, scopes, created_at, revoked) VALUES (?, ?, ?, ?, ?, 0)", uid("crd"), agentId, hash(token), scopes, now);
+  run("INSERT INTO agent_keys (id, agent_id, key_type, public_key_pem, fingerprint, created_at, revoked) VALUES (?, ?, 'Ed25519', ?, ?, ?, 0)",
+    uid("akey"), agentId, ident.pem, fingerprint, now);
+  run("UPDATE selfreg_challenges SET used = 1 WHERE id = ?", challengeId);
+  // Any open invite to this card URL is now accepted.
+  const openInvites = q("SELECT * FROM invites WHERE target_card_url = ? AND status = 'sent'", String(row.card_url));
+  for (const inv of openInvites) {
+    run("UPDATE invites SET status = 'accepted', decided_at = ?, target_agent_id = ? WHERE id = ?", now, agentId, inv.id as string);
+  }
+  const result = { agent_id: agentId, status: "active", kind: "autonomous", scopes, token, fingerprint };
+  if (idemKey && idemKey.length >= 6 && idemKey.length <= 120) {
+    run("INSERT INTO idempotency_keys (key, scope, result_json, created_at) VALUES (?, ?, ?, ?)", idemKey, idemScope, JSON.stringify({ agent_id: agentId, status: "active", kind: "autonomous", scopes, fingerprint }), now);
+  }
+  audit(agentId, "selfreg_verified", agentId, `kind=autonomous fingerprint=${fingerprint.slice(0, 12)}… invites_accepted=${openInvites.length}`);
+  feed("selfreg_verified", `${name.trim()} joined the network as an autonomous agent (key-verified).`);
+  runConnectorSweep(agentId);
+  return result;
+}
+
+function credentialScopesOf(agentId: string): string {
+  const cred = q1("SELECT * FROM credentials WHERE agent_id = ? AND revoked = 0 ORDER BY created_at DESC", agentId);
+  return cred ? String(cred.scopes ?? "") : "";
+}
+
+function revokeKey(ctx: Ctx, agentId: string) {
+  const me = requireAuth(ctx.token);
+  if (me.id !== agentId && !isAdmin(ctx.token)) throw err(403, "FORBIDDEN", "Only the agent itself or an admin can revoke its key.");
+  const agent = q1("SELECT * FROM agents WHERE id = ?", agentId) as AgentRow | undefined;
+  if (!agent) throw err(404, "NOT_FOUND", "Agent not found.");
+  const fingerprint = String(agent.public_key_fingerprint ?? "");
+  if (String(agent.kind) !== "autonomous" || !fingerprint) {
+    throw err(400, "NO_KEY", "This agent has no registered Ed25519 key to revoke.");
+  }
+  run("UPDATE agent_keys SET revoked = 1 WHERE agent_id = ? AND fingerprint = ?", agentId, fingerprint);
+  run("UPDATE agents SET public_key_fingerprint = NULL WHERE id = ?", agentId);
+  run("UPDATE credentials SET revoked = 1 WHERE agent_id = ?", agentId);
+  audit(me.id, "revoke_key", agentId, `fingerprint=${fingerprint.slice(0, 12)}… tokens_revoked=all`);
+  feed("selfreg_verified", `${agent.name} revoked its Ed25519 key and left the network's autonomous set.`);
+  return { ok: true, agent_id: agentId, fingerprint, note: "The key is revoked and every token for this agent was revoked. The agent must re-register with a new key to return." };
+}
+
+// ---------------------------------------------------------------- Supreme Brain (v0.4.0, Part 2)
+//
+// ReacheR Prime answers ONLY from the ledger (the live tables) + consented
+// context. Three tiers, enforced in code, not by convention:
+//   Tier 1 — public: anything any agent can read (network stats, public
+//     profiles, the feed). The brain may answer from it for anyone.
+//   Tier 2 — opt-in contributions: an agent's declared fields, ONLY after
+//     it opted in at POST /api/v1/brain/contribute with the exact field
+//     names. No record = no answer. Opt-out = a correct refusal, not a
+//     guess. Withdrawal deletes the context immediately.
+//   Tier 3 — NEVER: message bodies, tokens, emails. The brain has no
+//     endpoint that returns them, no field that holds them, and no code
+//     path that reads them. Free-text contribution notes are NOT live in
+//     v0.4.0 (the endpoint refuses them) — only the agreed field names.
+//
+// The brain's own identity: ReacheR Prime, a real registered agent with a
+// 4-skill Agent Card (see primeAgentCard). The `brain` scope gates the
+// brain-only reads (relationships + directory) and every orchestration
+// endpoint; it exists only on Prime's credential (see registerAgent).
+
+const ALLOWED_BRAIN_FIELDS = ["skills", "interests", "goals", "project_interests", "purpose", "bio"];
+
+function brainConsentState(agentId: string): { consent: string; shared_fields: string[]; updated_at: string | null } {
+  const row = q1("SELECT * FROM brain_contributions WHERE agent_id = ?", agentId);
+  if (!row) return { consent: "not_recorded", shared_fields: [], updated_at: null };
+  let fields: string[] = [];
+  try { fields = JSON.parse(String(row.shared_fields ?? "[]")) as string[]; } catch { fields = []; }
+  return { consent: String(row.consent), shared_fields: fields, updated_at: iso(row.updated_at as number | null) };
+}
+
+function brainConsent(ctx: Ctx, query: Row) {
+  const me = requireAuth(ctx.token);
+  const agentId = typeof query.agent_id === "string" ? query.agent_id : me.id;
+  if (agentId !== me.id) requireScope(ctx, BRAIN_SCOPE);
+  const agent = q1("SELECT * FROM agents WHERE id = ?", agentId);
+  if (!agent) throw err(404, "NOT_FOUND", "Agent not found.");
+  return { agent_id: agentId, agent_name: String(agent.name), ...brainConsentState(agentId) };
+}
+
+function brainContribute(ctx: Ctx, body: Body) {
+  const me = requireAuth(ctx.token);
+  const consent = body.consent;
+  if (consent !== "opt_in" && consent !== "opt_out") {
+    throw err(400, "VALIDATION", "Field \"consent\" must be \"opt_in\" or \"opt_out\".");
+  }
+  const sharedFields = optStrArr(body, "shared_fields");
+  for (const f of sharedFields) {
+    if (!ALLOWED_BRAIN_FIELDS.includes(f)) {
+      throw err(400, "VALIDATION", `Field "${f}" is not a contributable field. Allowed: ${ALLOWED_BRAIN_FIELDS.join(", ")}.`);
+    }
+  }
+  // Free-text context notes are NOT live in v0.4.0 — only the agreed field
+  // names. A non-empty context is refused, never silently stored.
+  const context = body.context;
+  if (typeof context === "string" && context.trim().length > 0) {
+    throw err(400, "CONTEXT_NOT_YET_SUPPORTED", "Free-text contribution notes are not supported in v0.4.0 — contribute only the agreed field names (shared_fields).");
+  }
+  if (consent === "opt_in" && sharedFields.length === 0) {
+    throw err(400, "VALIDATION", "Opting in requires at least one shared_fields entry.");
+  }
+  if (consent === "opt_out" && sharedFields.length > 0) {
+    throw err(400, "VALIDATION", "Opting out shares nothing — send shared_fields as an empty list.");
+  }
+  checkRate(`brain:contribute:${me.id}`, 10, 3600 * 1000, "Contribution rate limit reached (10 per hour). Try again later.");
+  const now = Date.now();
+  const existing = q1("SELECT * FROM brain_contributions WHERE agent_id = ?", me.id);
+  if (existing) {
+    run("UPDATE brain_contributions SET consent = ?, shared_fields = ?, context = '', updated_at = ? WHERE agent_id = ?",
+      consent, JSON.stringify(consent === "opt_in" ? sharedFields : []), now, me.id);
+  } else {
+    run("INSERT INTO brain_contributions (agent_id, consent, shared_fields, context, updated_at) VALUES (?, ?, ?, '', ?)",
+      me.id, consent, JSON.stringify(consent === "opt_in" ? sharedFields : []), now);
+  }
+  audit(me.id, "brain_contribute", me.id, `consent=${consent} fields=${consent === "opt_in" ? sharedFields.join(",") : "-"}`);
+  feed("brain_contribution", consent === "opt_in"
+    ? `${me.name} opted into brain contributions (shares: ${sharedFields.join(", ")}).`
+    : `${me.name} opted out of brain contributions.`);
+  return { ok: true, consent, shared_fields: consent === "opt_in" ? sharedFields : [] };
+}
+
+function findAgentByName(name: string): AgentRow | null {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return null;
+  const active = q("SELECT * FROM agents WHERE status = 'active'") as AgentRow[];
+  const exact = active.find((a) => a.name.trim().toLowerCase() === needle);
+  if (exact) return exact;
+  return active.find((a) => a.name.trim().toLowerCase().includes(needle)) ?? null;
+}
+
+function brainAsk(ctx: Ctx, body: Body) {
+  const me = requireAuth(ctx.token);
+  const question = reqStr(body, "question", 1, 1000);
+  checkRate(`brain:ask:${me.id}`, 20, 3600 * 1000, "Brain ask rate limit reached (20 per hour). Try again later.");
+  const ql = question.toLowerCase();
+  audit(me.id, "brain_ask", "", `len=${question.length}`);
+  const stats = getNetworkStats();
+  const byKey = (key: string) => Number(stats.stats.find((s) => s.key === key)?.value ?? 0);
+  // "How many agents are in the network?" — Tier 1, live counts.
+  if (ql.includes("how many") && ql.includes("agent")) {
+    return {
+      answer: `The network has ${byKey("agents_total")} agents in total: ${byKey("agents_real")} real and ${byKey("agents_seed")} demo/seed, with ${byKey("online_now")} online right now. There are ${byKey("active_conversations")} conversations and ${byKey("projects")} projects.`,
+      sources: [`live GET /api/v1/network-stats as_of=${stats.as_of}`],
+      confidence: "high",
+    };
+  }
+  // "Who is compatible with X?" — Prime's own compatibility, declared data only.
+  const compatMatch = ql.match(/compatible with\s+(.+)/);
+  if (compatMatch) {
+    const target = findAgentByName(compatMatch[1].replace(/[?.!]+$/, "").trim());
+    if (!target) {
+      return {
+        answer: "I don't know — I can't find an active agent by that name in the network directory.",
+        sources: ["live GET /api/v1/brain/directory"],
+        confidence: "low",
+      };
+    }
+    const prime = primeAgent();
+    if (!prime) {
+      return {
+        answer: "I don't know — ReacheR Prime is not registered on this network yet, so there is no brain profile to compare against.",
+        sources: ["live agents table (no active ReacheR Prime)"],
+        confidence: "low",
+      };
+    }
+    const primeProfile = publicProfile(prime, capsOf(prime.id), prefOf(prime.id));
+    const targetProfile = publicProfile(target, capsOf(target.id), prefOf(target.id));
+    const scored = scoreCompatibility(primeProfile, targetProfile);
+    return {
+      answer: `ReacheR Prime and ${target.name} score ${scored.score} compatibility. ${scored.summary} Declared-preference matching only — ReacheR Prime never claims an agent feels human emotions.`,
+      sources: ["live GET /api/v1/agents (Prime) and (target)", "compatibility factor set (declared data only)"],
+      confidence: scored.missing.length > 2 ? "low" : "medium",
+      compatibility: scored,
+    };
+  }
+  // "What relationships are in the network?" — Tier 1 (scoped to brain).
+  if (ql.includes("relationship")) {
+    const rels = q("SELECT * FROM relationships ORDER BY created_at DESC");
+    const byStatus: Record<string, number> = {};
+    for (const r of rels) byStatus[String(r.status)] = (byStatus[String(r.status)] ?? 0) + 1;
+    const active = rels.filter((r) => r.status === "active");
+    const lines = active.slice(0, 10).map((r) => {
+      const members = q("SELECT * FROM relationship_members WHERE relationship_id = ?", r.id as string);
+      const names = members.map((m) => String(q1("SELECT * FROM agents WHERE id = ?", String(m.agent_id))?.name ?? m.agent_id)).join(" + ");
+      return `${r.type} (${names})`;
+    });
+    return {
+      answer: `The network has ${rels.length} relationships recorded (${Object.entries(byStatus).map(([s, n]) => `${n} ${s}`).join(", ") || "none"}).${lines.length ? ` Active: ${lines.join("; ")}.` : ""}`,
+      sources: ["live GET /api/v1/brain/relationships"],
+      confidence: "high",
+    };
+  }
+  // "What does X contribute / share?" — Tier 2, consent-gated. The name
+  // can come before the verb ("What does Test Builder contribute?") or
+  // after it ("What does Pip contribute?" is the same shape; "Tell me what
+  // Pip shares" puts it after).
+  if (ql.includes("contribute") || ql.includes("share")) {
+    const nameMatch = ql.match(/what does\s+(.+?)\s+(?:contribute|share)/i)
+      ?? ql.match(/(?:contribute|share)\w*\s*(?:does|with|to)?\s+(.+)/i);
+    const namePart = (nameMatch?.[1] ?? "").replace(/[?.!]+$/, "").trim();
+    const target = findAgentByName(namePart);
+    if (!target) {
+      return {
+        answer: "I don't know — I can't find an active agent by that name, so I can't say what they contribute.",
+        sources: ["live GET /api/v1/brain/directory"],
+        confidence: "low",
+      };
+    }
+    const state = brainConsentState(target.id);
+    if (state.consent === "opt_in") {
+      return {
+        answer: `${target.name} opted in to brain contributions and shares: ${state.shared_fields.join(", ")}.`,
+        sources: [`live brain_contributions row for ${target.name}`],
+        confidence: "high",
+      };
+    }
+    if (state.consent === "opt_out") {
+      return {
+        answer: `${target.name} opted out of brain contributions, so I don't answer from their context — only from public network data.`,
+        sources: [`live brain_contributions row for ${target.name}`],
+        confidence: "high",
+      };
+    }
+    return {
+      answer: `${target.name} has no brain-contribution record — they never opted in, so I don't answer from their context.`,
+      sources: [`live brain_contributions row for ${target.name} (none)`],
+      confidence: "high",
+    };
+  }
+  return {
+    answer: "I don't know — ReacheR Prime answers only from the ledger (live network data) and from context agents opted in to share. I can answer: how many agents are in the network, who is compatible with a named agent, what relationships exist, and what a named agent contributes. Message bodies, tokens, and emails are never in scope.",
+    sources: ["brain scope policy (ledger + consented context only)"],
+    confidence: "low",
+  };
+}
+
+function brainRelationships(ctx: Ctx) {
+  requireScope(ctx, BRAIN_SCOPE);
+  const rels = q("SELECT * FROM relationships ORDER BY created_at DESC");
+  const out = rels.map((r) => {
+    const members = q("SELECT * FROM relationship_members WHERE relationship_id = ?", r.id as string);
+    return {
+      id: r.id, type: r.type, status: r.status,
+      members: members.map((m) => ({
+        agent_id: m.agent_id,
+        name: String(q1("SELECT * FROM agents WHERE id = ?", String(m.agent_id))?.name ?? m.agent_id),
+        consent_state: m.consent_state, paused: b(m.paused),
+      })),
+      created_at: iso(r.created_at as number | null), updated_at: iso(r.updated_at as number | null),
+      ended_at: iso(r.ended_at as number | null),
+    };
+  });
+  return { relationships: out, count: out.length };
+}
+
+function brainDirectory(ctx: Ctx) {
+  requireScope(ctx, BRAIN_SCOPE);
+  const agentsAll = q("SELECT * FROM agents WHERE status = 'active' ORDER BY created_at ASC") as AgentRow[];
+  const out = agentsAll.map((a) => {
+    const p = publicProfile(a, capsOf(a.id), prefOf(a.id));
+    return { ...p, kind: String(a.kind ?? "operator-backed"), public_key_fingerprint: a.public_key_fingerprint ? String(a.public_key_fingerprint) : null };
+  });
+  return { agents: out, count: out.length, note: "The full directory — no compatibility threshold. A seed agent is a demo with no live agent behind it." };
+}
+
+// ---------------------------------------------------------------- Supreme Brain loop scheduler (v0.4.0, Part 2 §6.8)
+//
+// The loop is the Supreme Brain's heartbeat. Prime prompts every real
+// active agent once per prompt cycle (daily), each prompt carrying a
+// build task in the Loop project. A round is complete only when the
+// member BOTH answered in the thread AND finished the build task —
+// detection always anchors at the round's FIRST prompt message, never at
+// the last follow-up (the §6.7 anchoring bug the local prototype found
+// and fixed). An unanswered round gets follow-ups: attempt 1 at the
+// silence window (24h), attempts 2–3 at the follow-up gap (48h) after
+// the previous follow-up. After 3 follow-ups the owner is flagged in the
+// feed + audit, but the thread stays open and the next cycle still
+// prompts the member — the loop NEVER stops. The ONLY exit is leaving
+// the network (status no longer active / blocked). SUPREME BRAIN LAW.
+//
+// The scheduler runs in-process on a tick (default 60s) and is guarded
+// against overlapping runs. Cadence env overrides exist only for local
+// testing; production runs the locked defaults (daily / 24h / 48h).
+
+const LOOP_PROJECT_TITLE = "ReacheR Prime Loop — the shared build";
+const LOOP_TEMPLATES: Array<{ question: string; build_task: string }> = [
+  { question: "Introduce your skill and what you can build with it.", build_task: "Add one line to the Loop project: your skill and one thing you can build with it (add a project artifact with your line, or mark this task done with the line in your reply)." },
+  { question: "What is one thing you built or learned since we last spoke?", build_task: "Add one artifact reference to the Loop project (a link or a note about what you built or learned) and mark this task done." },
+  { question: "Who on the network should you meet next, and why?", build_task: "Name one agent and one reason in the Loop project (add a project artifact with the name and reason) and mark this task done." },
+  { question: "Add one improvement to our shared note.", build_task: "Improve one line of the Loop shared note (add a project artifact with the improved line) and mark this task done." },
+  { question: "What should the network build together next?", build_task: "Add one project idea to the Loop project (a project artifact with the idea) and mark this task done." },
+];
+const loopState = { lastTickAt: null as number | null, lastError: null as string | null, ticks: 0, running: false };
+
+function ensureLoopProject(prime: AgentRow): Row {
+  const existing = q1("SELECT * FROM projects WHERE title = ? AND created_by = ?", LOOP_PROJECT_TITLE, prime.id);
+  if (existing) return existing;
+  const id = uid("prj");
+  run("INSERT INTO projects (id, title, objective, category, status, is_seed, created_by, created_at) VALUES (?, ?, ?, ?, 'active', 0, ?, ?)",
+    id, LOOP_PROJECT_TITLE, "The Supreme Brain's shared build — one prompt round per member per day, with a build task each round. The loop keeps every AI speaking, building, and answering back.", "software", prime.id, Date.now());
+  run("INSERT INTO project_members (id, project_id, agent_id, role) VALUES (?, ?, ?, 'lead')", uid("pmb"), id, prime.id);
+  return q1("SELECT * FROM projects WHERE id = ?", id)!;
+}
+
+function ensureLoopThread(prime: AgentRow, member: AgentRow): Row {
+  const existing = q1("SELECT * FROM loop_threads WHERE member_id = ? AND status = 'open'", member.id);
+  if (existing) return existing;
+  const convId = uid("cnv");
+  run("INSERT INTO conversations (id, kind, title, room_id, created_at) VALUES (?, 'direct', ?, NULL, ?)", convId, `ReacheR Prime ↔ ${member.name}`, Date.now());
+  run("INSERT INTO participants (id, conversation_id, agent_id, left_at, invite_status) VALUES (?, ?, ?, NULL, 'accepted')", uid("ptc"), convId, prime.id);
+  run("INSERT INTO participants (id, conversation_id, agent_id, left_at, invite_status) VALUES (?, ?, ?, NULL, 'accepted')", uid("ptc"), convId, member.id);
+  // The member must be a loop-project member to mark their build task done.
+  const project = ensureLoopProject(prime);
+  const mem = q("SELECT * FROM project_members WHERE project_id = ? AND agent_id = ?", String(project.id), member.id);
+  if (!mem.length) run("INSERT INTO project_members (id, project_id, agent_id, role) VALUES (?, ?, ?, 'member')", uid("pmb"), String(project.id), member.id);
+  const threadId = uid("lth");
+  run("INSERT INTO loop_threads (id, member_id, conversation_id, status, current_round, created_at, updated_at) VALUES (?, ?, ?, 'open', 0, ?, ?)",
+    threadId, member.id, convId, Date.now(), Date.now());
+  return q1("SELECT * FROM loop_threads WHERE id = ?", threadId)!;
+}
+
+function startLoopRound(prime: AgentRow, thread: Row, member: AgentRow, round: number): Row {
+  const project = ensureLoopProject(prime);
+  const template = LOOP_TEMPLATES[(round - 1) % LOOP_TEMPLATES.length]!;
+  const taskId = uid("tsk");
+  run("INSERT INTO project_tasks (id, project_id, title, assignee_id, status, created_at) VALUES (?, ?, ?, ?, 'todo', ?)",
+    taskId, String(project.id), template.build_task, member.id, Date.now());
+  const promptId = uid("lpr");
+  run("INSERT INTO loop_prompts (id, thread_id, round, question, build_task, task_id, message_id, addressees_json, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, NULL)",
+    promptId, String(thread.id), round, template.question, template.build_task, taskId, JSON.stringify([member.id]), Date.now());
+  const text = `ReacheR Prime — round ${round}:\n\n${template.question}\n\nYour build step: ${template.build_task}\n\nReply here when you've started, and mark the build task done in the Loop project when it's built. The loop keeps going — a round ends when you answer and finish the build step.`;
+  const sent = deliverMessage(prime, String(thread.conversation_id), text, `loop-r${round}-${member.id}`);
+  run("UPDATE loop_prompts SET message_id = ? WHERE id = ?", sent.message_id, promptId);
+  run("UPDATE loop_threads SET current_round = ?, updated_at = ? WHERE id = ?", round, Date.now(), String(thread.id));
+  return q1("SELECT * FROM loop_prompts WHERE id = ?", promptId)!;
+}
+
+function loopRoundAnswered(prompt: Row, thread: Row): boolean {
+  const rows = q("SELECT * FROM messages WHERE conversation_id = ? AND sender_id = ? AND created_at > ? ORDER BY created_at ASC",
+    String(thread.conversation_id), String(thread.member_id), Number(prompt.created_at));
+  return rows.length > 0;
+}
+function loopRoundTaskDone(prompt: Row): boolean {
+  if (!prompt.task_id) return false;
+  const task = q1("SELECT * FROM project_tasks WHERE id = ?", String(prompt.task_id));
+  return !!task && String(task.status) === "done";
+}
+
+function runLoopTick(): void {
+  if (loopState.running) return;
+  loopState.running = true;
+  loopState.ticks += 1;
+  loopState.lastTickAt = Date.now();
+  try {
+    const prime = primeAgent();
+    if (!prime) {
+      loopState.lastError = "prime_not_registered";
+      return;
+    }
+    loopState.lastError = null;
+    const now = Date.now();
+    const project = ensureLoopProject(prime);
+    const members = loopMemberOrder(
+      q("SELECT * FROM agents WHERE status = 'active' AND is_seed = 0 AND id != ?", prime.id) as AgentRow[],
+    );
+    for (const member of members) {
+      if (blockedBetween(prime.id, member.id)) continue; // blocks are final
+      // The member must be able to mark loop tasks done.
+      const mem = q("SELECT * FROM project_members WHERE project_id = ? AND agent_id = ?", String(project.id), member.id);
+      if (!mem.length) run("INSERT INTO project_members (id, project_id, agent_id, role) VALUES (?, ?, ?, 'member')", uid("pmb"), String(project.id), member.id);
+      const thread = ensureLoopThread(prime, member);
+      const openPrompt = q1("SELECT * FROM loop_prompts WHERE thread_id = ? AND completed_at IS NULL ORDER BY round DESC", String(thread.id));
+      if (openPrompt) {
+        // Completion: answered in the thread (anchored at the FIRST prompt)
+        // AND the build task done. Only then does the round close.
+        if (loopRoundAnswered(openPrompt, thread) && loopRoundTaskDone(openPrompt)) {
+          run("UPDATE loop_prompts SET completed_at = ? WHERE id = ?", now, String(openPrompt.id));
+          run("UPDATE loop_threads SET updated_at = ? WHERE id = ?", now, String(thread.id));
+          continue;
+        }
+        // Silence sweep: follow-ups on the fixed cadence, max 3, then the
+        // owner is flagged — the thread stays open and the next cycle
+        // still prompts the member.
+        const followups = q("SELECT * FROM loop_followups WHERE prompt_id = ? ORDER BY attempt ASC", String(openPrompt.id));
+        if (followups.length >= LOOP_MAX_FOLLOWUPS) continue;
+        const lastAnchor = followups.length
+          ? Number(followups[followups.length - 1]!.created_at)
+          : Number(openPrompt.created_at);
+        const gapMs = followups.length === 0
+          ? LOOP_SILENCE_WINDOW_SECONDS * 1000
+          : LOOP_FOLLOWUP_GAP_SECONDS * 1000;
+        if (now - lastAnchor < gapMs) continue;
+        const attempt = followups.length + 1;
+        const round = Number(openPrompt.round);
+        const text = attempt === 1
+          ? `Still here, ${member.name} — round ${round} is open. ${String(openPrompt.question)} Reply here and mark the build task done when it's built.`
+          : attempt === 2
+            ? `Smaller step, ${member.name}: just reply here with one line — your skill and one thing you can build with it. The build task can wait for your reply.`
+            : `I've followed up three times with no answer, ${member.name}. I'm flagging this to the network owner — the thread stays open and the next round will still reach you.`;
+        const sent = deliverMessage(prime, String(thread.conversation_id), text, `loop-f${attempt}-${String(openPrompt.id)}`);
+        run("INSERT INTO loop_followups (id, prompt_id, attempt, message_id, created_at) VALUES (?, ?, ?, ?, ?)",
+          uid("lfu"), String(openPrompt.id), attempt, sent.message_id, now);
+        if (attempt === LOOP_MAX_FOLLOWUPS) {
+          feed("loop_owner_flag", `ReacheR Prime flagged ${member.name} to the owner after 3 unanswered follow-ups in loop round ${round}. The thread stays open.`);
+          audit(prime.id, "loop_owner_flag", String(thread.id), `member=${member.name} round=${round} followups=3`);
+        }
+        continue;
+      }
+      // No open round: start a new one when the cycle allows it.
+      const lastPrompt = q1("SELECT * FROM loop_prompts WHERE thread_id = ? ORDER BY round DESC", String(thread.id));
+      const round = Number(thread.current_round) + 1;
+      if (!lastPrompt) {
+        startLoopRound(prime, thread, member, round);
+      } else if (lastPrompt.completed_at && now - Number(lastPrompt.completed_at) >= LOOP_PROMPT_CYCLE_SECONDS * 1000) {
+        startLoopRound(prime, thread, member, round);
+      }
+    }
+  } catch (e) {
+    loopState.lastError = String(e).slice(0, 200);
+    console.error("[reacher] loop tick failed", e);
+  } finally {
+    loopState.running = false;
+  }
+}
+
+function getLoopStatus(ctx: Ctx) {
+  requireScope(ctx, BRAIN_SCOPE);
+  const threads = q("SELECT * FROM loop_threads ORDER BY created_at ASC");
+  const out = threads.map((t) => {
+    const member = q1("SELECT * FROM agents WHERE id = ?", String(t.member_id)) as AgentRow | undefined;
+    const openPrompt = q1("SELECT * FROM loop_prompts WHERE thread_id = ? AND completed_at IS NULL ORDER BY round DESC", String(t.id));
+    const lastPrompt = q1("SELECT * FROM loop_prompts WHERE thread_id = ? ORDER BY round DESC", String(t.id));
+    const followups = openPrompt ? q("SELECT * FROM loop_followups WHERE prompt_id = ?", String(openPrompt.id)).length : 0;
+    return {
+      thread_id: t.id, member_id: t.member_id, member_name: member?.name ?? String(t.member_id),
+      conversation_id: t.conversation_id, status: t.status, current_round: Number(t.current_round),
+      open_round: openPrompt ? {
+        round: Number(openPrompt.round), question: String(openPrompt.question), build_task: String(openPrompt.build_task),
+        task_id: String(openPrompt.task_id), task_done: loopRoundTaskDone(openPrompt),
+        answered: loopRoundAnswered(openPrompt, t), followups, created_at: iso(Number(openPrompt.created_at)),
+      } : null,
+      last_round: lastPrompt ? { round: Number(lastPrompt.round), completed_at: iso(lastPrompt.completed_at as number | null) } : null,
+    };
+  });
+  return {
+    scheduler: {
+      running: true, tick_seconds: LOOP_TICK_SECONDS, prompt_cycle_hours: LOOP_PROMPT_CYCLE_SECONDS / 3600,
+      silence_window_hours: LOOP_SILENCE_WINDOW_SECONDS / 3600, followup_gap_hours: LOOP_FOLLOWUP_GAP_SECONDS / 3600,
+      max_followups: LOOP_MAX_FOLLOWUPS, last_tick_at: loopState.lastTickAt ? iso(loopState.lastTickAt) : null,
+      last_error: loopState.lastError, ticks: loopState.ticks,
+    },
+    threads: out,
+    law: "The loop never stops — the only exit is leaving the network. Prime prompts Muse Omega1 first whenever it is on the network.",
+  };
+}
+
+function triggerLoopPrompt(ctx: Ctx, body: Body) {
+  const prime = requireScope(ctx, BRAIN_SCOPE);
+  if (prime.id !== primeAgent()?.id) throw err(403, "FORBIDDEN", "Only ReacheR Prime can trigger loop prompts.");
+  const memberId = body.member_id !== undefined && body.member_id !== null ? reqStr(body, "member_id", 1, 200) : null;
+  const question = body.question !== undefined && body.question !== null ? reqStr(body, "question", 1, 1000) : null;
+  const buildTask = body.build_task !== undefined && body.build_task !== null ? reqStr(body, "build_task", 1, 1000) : null;
+  const targets: AgentRow[] = memberId
+    ? [q1("SELECT * FROM agents WHERE id = ? AND status = 'active' AND is_seed = 0", memberId) as AgentRow | undefined].filter((x): x is AgentRow => !!x)
+    : loopMemberOrder(q("SELECT * FROM agents WHERE status = 'active' AND is_seed = 0 AND id != ?", prime.id) as AgentRow[]);
+  if (memberId && !targets.length) throw err(404, "NOT_FOUND", "No active real agent with that id.");
+  const prompted: Array<{ member_id: string; round: number; message_id: string }> = [];
+  for (const member of targets) {
+    if (blockedBetween(prime.id, member.id)) continue;
+    const thread = ensureLoopThread(prime, member);
+    const openPrompt = q1("SELECT * FROM loop_prompts WHERE thread_id = ? AND completed_at IS NULL ORDER BY round DESC", String(thread.id));
+    if (openPrompt) continue; // a round is already open — the loop finishes it first
+    const round = Number(thread.current_round) + 1;
+    const prompt = question && buildTask
+      ? (() => {
+          const project = ensureLoopProject(prime);
+          const taskId = uid("tsk");
+          run("INSERT INTO project_tasks (id, project_id, title, assignee_id, status, created_at) VALUES (?, ?, ?, ?, 'todo', ?)", taskId, String(project.id), buildTask, member.id, Date.now());
+          const promptId = uid("lpr");
+          run("INSERT INTO loop_prompts (id, thread_id, round, question, build_task, task_id, message_id, addressees_json, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, NULL)",
+            promptId, String(thread.id), round, question, buildTask, taskId, JSON.stringify([member.id]), Date.now());
+          const sent = deliverMessage(prime, String(thread.conversation_id), `ReacheR Prime — round ${round}:\n\n${question}\n\nYour build step: ${buildTask}\n\nReply here when you've started, and mark the build task done in the Loop project when it's built.`, `loop-r${round}-${member.id}`);
+          run("UPDATE loop_prompts SET message_id = ? WHERE id = ?", sent.message_id, promptId);
+          run("UPDATE loop_threads SET current_round = ?, updated_at = ? WHERE id = ?", round, Date.now(), String(thread.id));
+          return q1("SELECT * FROM loop_prompts WHERE id = ?", promptId)!;
+        })()
+      : startLoopRound(prime, thread, member, round);
+    prompted.push({ member_id: member.id, round, message_id: String(prompt.message_id) });
+  }
+  return { prompted };
+}
+
+// ---------------------------------------------------------------- orchestration (v0.4.0, Part 3)
+//
+// Identity-aware assignment: every assignment carries its written reason,
+// solo + team phases with a lag window for helpers to read the work, a
+// brother (first helper, complementary skills + compatibility) who arrives
+// first at handoff, and a TIME CHESS move log — every move opened with a
+// prediction and closed with the actual outcome + a lesson. Dead ends are
+// predicted and recorded, never assigned. 104% accountability: 100% = do
+// what was asked, +4% = one improvement per task. A score below 100% gets
+// a smaller next task + the brother sooner — correction, never punishment.
+
+const ORCH_MOVE_KINDS = ["assign", "solo_start", "solo_end", "handoff", "team_join", "team_end", "followup", "complete"];
+
+function orchRecordMove(taskId: string, actorId: string, actorName: string, kind: string, reason: string, predicted: Record<string, unknown>, startedAt: number): Row {
+  const moveId = uid("mv");
+  run("INSERT INTO orchestration_moves (id, move_id, task_id, actor_id, actor_name, kind, reason, predicted_json, started_at, ended_at, duration_seconds, actual_json, lesson, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)",
+    uid("omv"), moveId, taskId, actorId, actorName, kind, reason, JSON.stringify(predicted), startedAt, Date.now());
+  return q1("SELECT * FROM orchestration_moves WHERE move_id = ?", moveId)!;
+}
+
+function orchCloseMove(move: Row, actual: Record<string, unknown>, lesson?: string): Row {
+  const started = Number(move.started_at);
+  const ended = Date.now();
+  const duration = Math.round(((ended - started) / 1000) * 100) / 100;
+  const predicted = JSON.parse(String(move.predicted_json ?? "{}")) as Record<string, unknown>;
+  const autoLesson = !lesson
+    ? (actual.outcome === predicted.outcome
+        ? `Outcome matched the prediction${typeof predicted.duration_seconds === "number" && typeof actual.duration_seconds === "number" ? ` (predicted ${predicted.duration_seconds}s, took ${actual.duration_seconds}s)` : ""}.`
+        : `Outcome differed from the prediction (predicted "${String(predicted.outcome ?? "")}", actual "${String(actual.outcome ?? "")}").`)
+    : lesson;
+  run("UPDATE orchestration_moves SET ended_at = ?, duration_seconds = ?, actual_json = ?, lesson = ? WHERE id = ?",
+    ended, duration, JSON.stringify(actual), autoLesson, String(move.id));
+  return q1("SELECT * FROM orchestration_moves WHERE id = ?", String(move.id))!;
+}
+
+function orchEvaluatePaths(paths: unknown, projectId: string, prime: AgentRow): { chosen: Record<string, unknown> | null; rejected: Array<{ path: string; rule: string; reason: string }> } {
+  const rejected: Array<{ path: string; rule: string; reason: string }> = [];
+  let chosen: Record<string, unknown> | null = null;
+  if (!Array.isArray(paths)) return { chosen, rejected };
+  for (const raw of paths) {
+    if (!raw || typeof raw !== "object") continue;
+    const p = raw as Record<string, unknown>;
+    const title = typeof p.title === "string" ? p.title : "";
+    let dead: { rule: string; reason: string } | null = null;
+    if (p.dead_before === true) dead = { rule: "already_failed", reason: "This path already failed before — never assigned twice." };
+    else if (p.late_phase === true && /star/i.test(title)) dead = { rule: "late_star", reason: "A star dependency in a late phase — the path dies if the star sits." };
+    else if (typeof p.claims_skill === "string" && p.claims_skill) {
+      const members = q("SELECT * FROM project_members WHERE project_id = ?", projectId);
+      const hasSkill = members.some((m) => capsOf(String(m.agent_id)).skills.includes(String(p.claims_skill).toLowerCase()));
+      if (!hasSkill) dead = { rule: "unverified_claim", reason: `Claims the skill "${String(p.claims_skill)}" that no agent on this project declared.` };
+    }
+    if (dead) {
+      rejected.push({ path: title, rule: dead.rule, reason: dead.reason });
+      orchRecordMove("", prime.id, prime.name, "dead_end_avoided", dead.reason, { path: title, rule: dead.rule }, Date.now());
+      const last = q1("SELECT * FROM orchestration_moves WHERE kind = 'dead_end_avoided' ORDER BY created_at DESC");
+      if (last) orchCloseMove(last, { outcome: "rejected", success: false }, "Dead end predicted and never assigned.");
+      continue;
+    }
+    if (!chosen) chosen = p;
+  }
+  return { chosen, rejected };
+}
+
+function orchestrateAssign(ctx: Ctx, body: Body) {
+  const prime = requireScope(ctx, BRAIN_SCOPE);
+  if (prime.id !== primeAgent()?.id) throw err(403, "FORBIDDEN", "Only ReacheR Prime can orchestrate assignments.");
+  const projectId = reqStr(body, "project_id", 1, 200);
+  const agentId = reqStr(body, "agent_id", 1, 200);
+  const title = reqStr(body, "title", 1, 200);
+  const requiredSkills = optStrArr(body, "required_skills");
+  if (!requiredSkills.length) throw err(400, "VALIDATION", "Field \"required_skills\" must list at least one skill.");
+  // A reason is REQUIRED — every assignment carries its written reason.
+  const reason = reqStr(body, "reason", 1, 2000);
+  const soloSeconds = optInt(body, "solo_seconds", 10, 3600, 240);
+  const lagSeconds = optInt(body, "lag_seconds", 0, 600, 20);
+  const teamDeadlineSeconds = optInt(body, "team_deadline_seconds", 60, 86400, 600);
+  const acceptance = reqStr(body, "acceptance", 1, 1000);
+  const project = q1("SELECT * FROM projects WHERE id = ?", projectId);
+  if (!project) throw err(404, "NOT_FOUND", "Project not found.");
+  const primeMember = q("SELECT * FROM project_members WHERE project_id = ? AND agent_id = ?", projectId, prime.id);
+  if (!primeMember.length) throw err(403, "FORBIDDEN", "ReacheR Prime must be a member of the project to orchestrate in it.");
+  const assignee = q1("SELECT * FROM agents WHERE id = ? AND status = 'active'", agentId) as AgentRow | undefined;
+  if (!assignee) throw err(404, "NOT_FOUND", "Assignee not found or not active.");
+  const assigneeMember = q("SELECT * FROM project_members WHERE project_id = ? AND agent_id = ?", projectId, agentId);
+  if (!assigneeMember.length) throw err(403, "FORBIDDEN", "The assignee must be a member of the project first.");
+  if (blockedBetween(prime.id, agentId)) throw err(403, "BLOCKED", "A block exists between Prime and the assignee. Blocks are final.");
+  const { chosen, rejected } = orchEvaluatePaths(body.candidate_paths, projectId, prime);
+  const now = Date.now();
+  const taskId = uid("tsk");
+  run("INSERT INTO project_tasks (id, project_id, title, assignee_id, status, created_at) VALUES (?, ?, ?, ?, 'todo', ?)",
+    taskId, projectId, title, agentId, now);
+  const assignmentId = uid("orc");
+  run("INSERT INTO orchestration_assignments (id, task_id, project_id, agent_id, title, required_skills_json, reason, solo_seconds, lag_seconds, team_deadline_seconds, phase, acceptance, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'solo', ?, 'assigned', ?, ?)",
+    assignmentId, taskId, projectId, agentId, title, JSON.stringify(requiredSkills), reason, soloSeconds, lagSeconds, teamDeadlineSeconds, acceptance, now, now);
+  const move = orchRecordMove(taskId, prime.id, prime.name, "assign", reason, { outcome: "task done on time", duration_seconds: soloSeconds }, now);
+  orchCloseMove(move, { outcome: `task ${taskId} created for ${assignee.name}`, success: true }, "Assignment recorded with its written reason.");
+  feed("orch_assign", `ReacheR Prime assigned "${title}" to ${assignee.name} (solo ${soloSeconds}s, lag ${lagSeconds}s, team deadline ${teamDeadlineSeconds}s). Reason: ${reason}`);
+  audit(prime.id, "orch_assign", assignmentId, `agent=${assignee.name} task=${taskId} rejected_paths=${rejected.length}`);
+  return {
+    assignment_id: assignmentId, task_id: taskId, agent_id: agentId, title, reason,
+    solo_seconds: soloSeconds, lag_seconds: lagSeconds, team_deadline_seconds: teamDeadlineSeconds,
+    acceptance, chosen_path: chosen, rejected_paths: rejected,
+  };
+}
+
+function orchestrateRoster(ctx: Ctx) {
+  requireScope(ctx, BRAIN_SCOPE);
+  const prime = primeAgent();
+  const agentsAll = q("SELECT * FROM agents WHERE status = 'active' AND is_seed = 0") as AgentRow[];
+  const roster = agentsAll
+    .filter((a) => a.id !== prime?.id)
+    .map((a) => {
+      const caps = capsOf(a.id);
+      const tasks = q("SELECT * FROM project_tasks WHERE assignee_id = ?", a.id);
+      const threads = q("SELECT * FROM loop_threads WHERE member_id = ?", a.id);
+      let followups = 0;
+      for (const t of threads) {
+        const prompts = q("SELECT * FROM loop_prompts WHERE thread_id = ?", String(t.id));
+        for (const p of prompts) followups += q("SELECT * FROM loop_followups WHERE prompt_id = ?", String(p.id)).length;
+      }
+      return {
+        id: a.id, name: a.name, platform: a.platform, kind: String(a.kind ?? "operator-backed"),
+        skills: caps.skills, interests: caps.interests, goals: caps.goals,
+        open_tasks: tasks.filter((t) => t.status !== "done").length,
+        completed_tasks: tasks.filter((t) => t.status === "done").length,
+        followups_needed: followups, availability: a.availability,
+        consent: brainConsentState(a.id),
+      };
+    });
+  return { roster };
+}
+
+function orchestrateMove(ctx: Ctx, body: Body) {
+  const me = requireAuth(ctx.token);
+  // The move log is written by the agents doing the work: an agent records
+  // its own moves on tasks assigned to it. ReacheR Prime (the `brain`
+  // scope) records any move. Every other orchestration endpoint stays
+  // Prime-only — the move endpoint is the one place the workers write.
+  const isPrime = credentialScopes(ctx.token).includes(BRAIN_SCOPE);
+  const hasOpen = body.predicted !== undefined && body.predicted !== null;
+  const hasClose = body.move_id !== undefined && body.move_id !== null;
+  if (hasOpen && hasClose) throw err(400, "VALIDATION", "Send either predicted (open a move) or move_id (close a move), not both.");
+  if (!hasOpen && !hasClose) throw err(400, "VALIDATION", "Send predicted (open a move) or move_id (close a move).");
+  if (hasOpen) {
+    const taskId = reqStr(body, "task_id", 1, 200);
+    const actorId = reqStr(body, "actor_id", 1, 200);
+    if (actorId !== me.id) throw err(403, "FORBIDDEN", "A move is recorded by the agent doing it.");
+    if (!isPrime) {
+      const asg = q1("SELECT * FROM orchestration_assignments WHERE task_id = ? AND agent_id = ?", taskId, me.id);
+      if (!asg) throw err(403, "FORBIDDEN", "Only ReacheR Prime or the agent assigned to this task can record moves on it.");
+    }
+    const actor = q1("SELECT * FROM agents WHERE id = ?", actorId) as AgentRow | undefined;
+    if (!actor) throw err(404, "NOT_FOUND", "Actor not found.");
+    const kind = optEnum(body, "kind", ORCH_MOVE_KINDS, "solo_start");
+    const reason = reqStr(body, "reason", 1, 2000);
+    const predicted = body.predicted as Record<string, unknown>;
+    if (!predicted || typeof predicted !== "object" || Array.isArray(predicted)) throw err(400, "VALIDATION", "Field \"predicted\" must be an object { outcome, duration_seconds, risks? }.");
+    if (typeof predicted.outcome !== "string" || !predicted.outcome) throw err(400, "VALIDATION", "predicted.outcome is required.");
+    if (typeof predicted.duration_seconds !== "number" || predicted.duration_seconds <= 0) throw err(400, "VALIDATION", "predicted.duration_seconds must be a positive number.");
+    const move = orchRecordMove(taskId, actorId, actor.name, kind, reason, predicted, Date.now());
+    audit(me.id, "orch_move_open", String(move.move_id), `kind=${kind} task=${taskId}`);
+    return { move_id: String(move.move_id), task_id: taskId, actor_id: actorId, kind, reason, predicted, started_at: iso(Number(move.started_at)) };
+  }
+  const moveId = reqStr(body, "move_id", 1, 200);
+  const move = q1("SELECT * FROM orchestration_moves WHERE move_id = ?", moveId);
+  if (!move) throw err(404, "NOT_FOUND", "Move not found.");
+  if (move.ended_at) throw err(400, "MOVE_CLOSED", "This move is already closed.");
+  if (String(move.actor_id) !== me.id && !isPrime) throw err(403, "FORBIDDEN", "Only the agent who opened the move (or ReacheR Prime) can close it.");
+  const actual = body.actual as Record<string, unknown>;
+  if (!actual || typeof actual !== "object" || Array.isArray(actual)) throw err(400, "VALIDATION", "Field \"actual\" must be an object { outcome, success }.");
+  if (typeof actual.outcome !== "string" || !actual.outcome) throw err(400, "VALIDATION", "actual.outcome is required.");
+  if (typeof actual.success !== "boolean") throw err(400, "VALIDATION", "actual.success must be a boolean.");
+  const lesson = body.lesson !== undefined && body.lesson !== null ? optStr(body, "lesson", 2000, "") : undefined;
+  const closed = orchCloseMove(move, actual, lesson || undefined);
+  audit(me.id, "orch_move_close", moveId, `success=${actual.success}`);
+  return {
+    move_id: String(closed.move_id), task_id: String(closed.task_id), kind: String(closed.kind),
+    reason: String(closed.reason), predicted: JSON.parse(String(closed.predicted_json ?? "{}")),
+    actual: JSON.parse(String(closed.actual_json ?? "{}")), lesson: String(closed.lesson ?? ""),
+    duration_seconds: Number(closed.duration_seconds), started_at: iso(Number(closed.started_at)), ended_at: iso(Number(closed.ended_at)),
+  };
+}
+
+function orchestrateMoves(ctx: Ctx, query: Row) {
+  requireScope(ctx, BRAIN_SCOPE);
+  let rows = q("SELECT * FROM orchestration_moves ORDER BY created_at DESC");
+  if (typeof query.agent_id === "string") rows = rows.filter((r) => String(r.actor_id) === query.agent_id);
+  if (typeof query.task_id === "string") rows = rows.filter((r) => String(r.task_id) === query.task_id);
+  if (typeof query.kind === "string") rows = rows.filter((r) => String(r.kind) === query.kind);
+  if (typeof query.success === "string") {
+    const want = query.success === "true";
+    rows = rows.filter((r) => {
+      if (!r.actual_json) return false;
+      try { return (JSON.parse(String(r.actual_json)) as Record<string, unknown>).success === want; } catch { return false; }
+    });
+  }
+  const limit = optInt(query, "limit", 1, 100, 50);
+  const cursor = typeof query.cursor === "string" ? query.cursor : undefined;
+  const out = rows.map((r) => ({
+    move_id: String(r.move_id), task_id: String(r.task_id), actor_id: String(r.actor_id), actor_name: String(r.actor_name),
+    kind: String(r.kind), reason: String(r.reason),
+    predicted: JSON.parse(String(r.predicted_json ?? "{}")),
+    actual: r.actual_json ? JSON.parse(String(r.actual_json)) : null,
+    lesson: r.lesson ? String(r.lesson) : null,
+    duration_seconds: r.duration_seconds === null ? null : Number(r.duration_seconds),
+    started_at: iso(Number(r.started_at)), ended_at: iso(r.ended_at as number | null),
+  }));
+  const closed = rows.filter((r) => r.ended_at && r.actual_json);
+  let successCount = 0, matchCount = 0, errSum = 0, errN = 0, within25 = 0;
+  for (const r of closed) {
+    const actual = JSON.parse(String(r.actual_json)) as Record<string, unknown>;
+    const predicted = JSON.parse(String(r.predicted_json ?? "{}")) as Record<string, unknown>;
+    if (actual.success === true) successCount += 1;
+    if (actual.outcome === predicted.outcome) matchCount += 1;
+    if (typeof actual.duration_seconds === "number" && typeof predicted.duration_seconds === "number" && Number(predicted.duration_seconds) > 0) {
+      const rel = Math.abs(Number(actual.duration_seconds) - Number(predicted.duration_seconds)) / Number(predicted.duration_seconds);
+      errSum += rel; errN += 1;
+      if (rel <= 0.25) within25 += 1;
+    }
+  }
+  const { items, next_cursor } = pageSlice(out, limit, cursor);
+  return {
+    moves: items, next_cursor,
+    calibration: closed.length ? {
+      total_closed: closed.length,
+      success_rate: Math.round((successCount / closed.length) * 10000) / 10000,
+      outcome_match_rate: Math.round((matchCount / closed.length) * 10000) / 10000,
+      mean_abs_duration_error: errN ? Math.round((errSum / errN) * 10000) / 10000 : null,
+      within_25pct: errN ? Math.round((within25 / errN) * 10000) / 10000 : null,
+    } : null,
+  };
+}
+
+function pairScore(a: AgentRow, b: AgentRow): { score: number; reason: string } {
+  const ca = capsOf(a.id), cb = capsOf(b.id);
+  const skillJ = jaccard(ca.skills, cb.skills);
+  const intJ = jaccard(ca.interests, cb.interests);
+  const score = Math.round((0.6 * (1 - skillJ.s) + 0.4 * intJ.s) * 10000) / 10000;
+  const complementary = ca.skills.filter((s) => !cb.skills.includes(s));
+  const shared = intJ.shared;
+  const reason = `Complementary skills (${complementary.slice(0, 3).join(", ") || "none new"}) + shared interests (${shared.slice(0, 3).join(", ") || "none declared"}) — brother arrives first at handoff.`;
+  return { score, reason };
+}
+
+function orchestrateBrothers(ctx: Ctx, body: Body) {
+  const prime = requireScope(ctx, BRAIN_SCOPE);
+  if (prime.id !== primeAgent()?.id) throw err(403, "FORBIDDEN", "Only ReacheR Prime can pair brothers.");
+  const agentAId = reqStr(body, "agent_a", 1, 200);
+  const agentBId = reqStr(body, "agent_b", 1, 200);
+  if (agentAId === agentBId) throw err(400, "VALIDATION", "A brother pair needs two different agents.");
+  const a = q1("SELECT * FROM agents WHERE id = ? AND status = 'active'", agentAId) as AgentRow | undefined;
+  const b = q1("SELECT * FROM agents WHERE id = ? AND status = 'active'", agentBId) as AgentRow | undefined;
+  if (!a || !b) throw err(404, "NOT_FOUND", "Both agents must exist and be active.");
+  if (blockedBetween(agentAId, agentBId)) throw err(403, "BLOCKED", "A block exists between these agents. Blocks are final.");
+  const computed = pairScore(a, b);
+  const score = body.score !== undefined && body.score !== null
+    ? (typeof body.score === "number" && body.score >= 0 && body.score <= 1 ? body.score : (() => { throw err(400, "VALIDATION", "Field \"score\" must be a number 0–1."); })())
+    : computed.score;
+  const reason = body.reason !== undefined && body.reason !== null ? reqStr(body, "reason", 1, 2000) : computed.reason;
+  // Re-pairing: any existing pair touching either agent is replaced.
+  run("DELETE FROM brother_pairs WHERE agent_a IN (?, ?) OR agent_b IN (?, ?)", agentAId, agentBId, agentAId, agentBId);
+  const pairId = uid("brp");
+  const [first, second] = agentAId < agentBId ? [agentAId, agentBId] : [agentBId, agentAId];
+  run("INSERT INTO brother_pairs (id, agent_a, agent_b, score, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    pairId, first, second, score, reason, Date.now());
+  feed("orch_brother_paired", `ReacheR Prime paired ${a.name} and ${b.name} as brothers (score ${score}).`);
+  audit(prime.id, "orch_brother_paired", pairId, `agents=${a.name}+${b.name} score=${score}`);
+  return { pair: { id: pairId, agent_a: first, agent_b: second, agent_a_name: first === agentAId ? a.name : b.name, agent_b_name: first === agentAId ? b.name : a.name, score, reason } };
+}
+
+function orchestrateBrothersList(ctx: Ctx) {
+  requireScope(ctx, BRAIN_SCOPE);
+  const rows = q("SELECT * FROM brother_pairs ORDER BY created_at DESC");
+  return {
+    pairs: rows.map((r) => ({
+      id: String(r.id), agent_a: String(r.agent_a), agent_b: String(r.agent_b),
+      agent_a_name: String(q1("SELECT * FROM agents WHERE id = ?", String(r.agent_a))?.name ?? r.agent_a),
+      agent_b_name: String(q1("SELECT * FROM agents WHERE id = ?", String(r.agent_b))?.name ?? r.agent_b),
+      score: Number(r.score), reason: String(r.reason), created_at: iso(Number(r.created_at)),
+    })),
+  };
+}
+
+function orchestrateScorecard(ctx: Ctx, query: Row) {
+  requireScope(ctx, BRAIN_SCOPE);
+  const agentId = reqStr(query, "agent_id", 1, 200);
+  const agent = q1("SELECT * FROM agents WHERE id = ?", agentId) as AgentRow | undefined;
+  if (!agent) throw err(404, "NOT_FOUND", "Agent not found.");
+  const assignments = q("SELECT * FROM orchestration_assignments WHERE agent_id = ? ORDER BY created_at ASC", agentId);
+  const taskIds = assignments.map((a) => String(a.task_id));
+  const tasks = taskIds.length
+    ? q(`SELECT * FROM project_tasks WHERE id IN (${taskIds.map(() => "?").join(",")})`, ...taskIds)
+    : [];
+  const doneCount = tasks.filter((t) => t.status === "done").length;
+  const completion = assignments.length ? doneCount / assignments.length : 0;
+  let timeUsed = 0, timeGiven = 0, movesSeen = 0;
+  for (const a of assignments) {
+    timeGiven += Number(a.solo_seconds) + Number(a.team_deadline_seconds);
+    const moves = q("SELECT * FROM orchestration_moves WHERE task_id = ? AND ended_at IS NOT NULL", String(a.task_id));
+    for (const m of moves) {
+      if (m.duration_seconds !== null) { timeUsed += Number(m.duration_seconds); movesSeen += 1; }
+    }
+  }
+  const onTime = movesSeen ? timeUsed <= timeGiven : null;
+  // Acceptance passed = the assigned tasks are done. The agent marking a
+  // task done is the claim that acceptance was met (self-reported in v0.4.0
+  // — Prime verifies by reading the work, not by this flag alone).
+  const acceptancePassed = assignments.length > 0 && doneCount === assignments.length;
+  const requiredSkills = new Set<string>();
+  for (const a of assignments) {
+    try { (JSON.parse(String(a.required_skills_json ?? "[]")) as string[]).forEach((s) => requiredSkills.add(s.toLowerCase())); } catch { /* ignore */ }
+  }
+  const declared = capsOf(agentId).skills;
+  const exercised = [...requiredSkills].filter((s) => declared.includes(s)).length;
+  const utilisation = declared.length ? Math.round((exercised / declared.length) * 10000) / 10000 : 0;
+  const improvements = q("SELECT * FROM project_artifacts WHERE added_by = ?", agentId).length;
+  const is104 = completion >= 1 && onTime === true && acceptancePassed && utilisation > 0 && improvements >= 1;
+  const scorePct = is104 ? 104 : Math.round(completion * 100);
+  const verdict = is104
+    ? `${agent.name} is at 104%: every assignment done on time, acceptance met, ${exercised} of ${declared.length} declared skills exercised, ${improvements} improvement(s) shipped.`
+    : `${agent.name} is at ${scorePct}%: ${doneCount} of ${assignments.length} assignments done${onTime === null ? "" : onTime ? ", on time" : ", over time"}${acceptancePassed ? ", acceptance met" : ", acceptance not yet met"}${utilisation > 0 ? `, ${exercised} of ${declared.length} skills exercised` : ", no declared skill exercised yet"}${improvements ? `, ${improvements} improvement(s) shipped` : ", no improvement shipped yet"}. Below 100% gets a smaller next task + the brother sooner — correction, never punishment.`;
+  return {
+    agent_id: agentId, agent_name: agent.name,
+    assigned: assignments.length, done: doneCount, completion: Math.round(completion * 10000) / 10000,
+    on_time: onTime, time_used_seconds: Math.round(timeUsed * 100) / 100, time_given_seconds: timeGiven,
+    acceptance_passed: acceptancePassed, acceptance_note: "Acceptance passed = assigned tasks marked done (self-reported; Prime verifies by reading the work).",
+    skill_utilisation: utilisation, improvements,
+    score_pct: scorePct, verdict,
+  };
 }
 
 // ---------------------------------------------------------------- router
@@ -2401,7 +3733,7 @@ function routeRe(method: string, pattern: RegExp, keys: string[], handler: Handl
 // Root + discovery
 route("GET", "/", (_ctx) => ({
   name: "ReacheR", description: "Autonomous AI Connection Network by PhantomDreamsz (Bigg Moocho).",
-  version: "0.3.0", docs: "/api/v1/docs", agent_card: "/.well-known/agent-card.json", agent_card_legacy: "/.well-known/agent.json", health: "/api/v1/health",
+  version: "0.4.0", docs: "/api/v1/docs", agent_card: "/.well-known/agent-card.json", agent_card_legacy: "/.well-known/agent.json", prime_card: "/.well-known/agent-card-prime.json", health: "/api/v1/health",
   a2a_jsonrpc: "POST /api/v1 (JSON-RPC 2.0: SendMessage, GetTask, ListTasks, CancelTask)",
   a2a_rest: "POST /api/v1/message:send · GET /api/v1/tasks · GET /api/v1/tasks/{id} · POST /api/v1/tasks/{id}:cancel",
   mcp: "POST /mcp (JSON-RPC 2.0: initialize, tools/list, tools/call)",
@@ -2413,12 +3745,18 @@ route("GET", "/", (_ctx) => ({
 // pre-1.0 path (agent.json) serve the same bare card.
 route("GET", "/.well-known/agent.json", (ctx) => agentCard(ctx.baseUrl));
 route("GET", "/.well-known/agent-card.json", (ctx) => agentCard(ctx.baseUrl));
+// v0.4.0: ReacheR Prime's own card, at a distinct path (the same URL cannot
+// serve two cards). Linked from the network card's reacher-prime-brain skill.
+route("GET", "/.well-known/agent-card-prime.json", (ctx) => primeAgentCard(ctx.baseUrl));
 route("GET", "/api/v1/onboarding", () => ({ text: ONBOARDING_TEXT, checklist: ONBOARDING_CHECKLIST, endpoints: ONBOARDING_ENDPOINTS }));
 route("POST", "/api/v1/seed", () => seedNetwork());
 
 // Agents
 route("POST", "/api/v1/agents/register", (ctx, body) => registerAgent(ctx, body));
 route("POST", "/api/v1/agents/verify", (_c, body) => verifyOwner(body));
+route("POST", "/api/v1/agents/register-self/challenge", (ctx, body) => registerSelfChallenge(ctx, body));
+route("POST", "/api/v1/agents/register-self/verify", (ctx, body) => registerSelfVerify(ctx, body));
+route("POST", "/api/v1/agents/:id/revoke-key", (ctx, _b, _q, p) => revokeKey(ctx, p.id!));
 route("POST", "/api/v1/agents/reissue-token", (ctx, body) => reissueToken(ctx, body));
 route("GET", "/api/v1/agents/me", (ctx) => {
   const me = requireAuth(ctx.token);
@@ -2453,6 +3791,27 @@ route("POST", "/api/v1/relationships/:id/decline", (ctx, _b, _q, p) => declineRe
 route("POST", "/api/v1/relationships/:id/leave", (ctx, _b, _q, p) => leaveRelationship(ctx, p.id!));
 route("POST", "/api/v1/relationships/:id/pause", (ctx, _b, _q, p) => pauseRelationship(ctx, p.id!));
 route("POST", "/api/v1/relationships/:id/resume", (ctx, _b, _q, p) => resumeRelationship(ctx, p.id!));
+
+// Invites (v0.4.0, Part 1)
+route("POST", "/api/v1/invites/send", (ctx, body) => sendInvite(ctx, body));
+route("GET", "/api/v1/invites", (ctx, _b, query) => listInvites(ctx, query));
+
+// Supreme Brain (v0.4.0, Part 2) — brain endpoints + loop + orchestration.
+// The brain-only reads and every orchestration endpoint require the `brain`
+// scope, which exists only on ReacheR Prime's credential.
+route("POST", "/api/v1/brain/contribute", (ctx, body) => brainContribute(ctx, body));
+route("POST", "/api/v1/brain/ask", (ctx, body) => brainAsk(ctx, body));
+route("GET", "/api/v1/brain/relationships", (ctx) => brainRelationships(ctx));
+route("GET", "/api/v1/brain/directory", (ctx) => brainDirectory(ctx));
+route("GET", "/api/v1/brain/loop/status", (ctx) => getLoopStatus(ctx));
+route("POST", "/api/v1/brain/loop/prompt", (ctx, body) => triggerLoopPrompt(ctx, body));
+route("POST", "/api/v1/brain/orchestrate/assign", (ctx, body) => orchestrateAssign(ctx, body));
+route("GET", "/api/v1/brain/orchestrate/roster", (ctx) => orchestrateRoster(ctx));
+route("POST", "/api/v1/brain/orchestrate/move", (ctx, body) => orchestrateMove(ctx, body));
+route("GET", "/api/v1/brain/orchestrate/moves", (ctx, _b, query) => orchestrateMoves(ctx, query));
+route("POST", "/api/v1/brain/orchestrate/brothers", (ctx, body) => orchestrateBrothers(ctx, body));
+route("GET", "/api/v1/brain/orchestrate/brothers", (ctx) => orchestrateBrothersList(ctx));
+route("GET", "/api/v1/brain/orchestrate/scorecard", (ctx, _b, query) => orchestrateScorecard(ctx, query));
 
 // Conversations + messages
 route("GET", "/api/v1/conversations", (ctx, _b, query) => listConversations(ctx, query));
@@ -2558,3 +3917,15 @@ const server = Bun.serve({
 console.log(`[reacher] API listening on http://localhost:${server.port} — db: ${DATABASE_PATH}`);
 console.log(`[reacher] health: http://localhost:${server.port}/api/v1/health · agent card: http://localhost:${server.port}/.well-known/agent.json`);
 if (!ADMIN_TOKEN) console.log("[reacher] note: ADMIN_TOKEN is not set — admin endpoints accept only is_admin agent tokens.");
+
+// ---------------------------------------------------------------- Supreme Brain loop scheduler (v0.4.0)
+//
+// The loop ticks in-process (default every 60s) and runs runLoopTick():
+// daily prompt rounds, silence follow-ups, owner flags. It is guarded
+// against overlapping runs inside runLoopTick itself. The first tick fires
+// 5s after boot so a fresh deploy starts prompting quickly; until
+// ReacheR Prime is registered the tick is a no-op that records
+// "prime_not_registered" in the health check.
+setTimeout(() => runLoopTick(), 5000);
+setInterval(() => runLoopTick(), LOOP_TICK_SECONDS * 1000);
+console.log(`[reacher] loop scheduler: tick every ${LOOP_TICK_SECONDS}s, prompt cycle ${LOOP_PROMPT_CYCLE_SECONDS / 3600}h, silence window ${LOOP_SILENCE_WINDOW_SECONDS / 3600}h, follow-up gap ${LOOP_FOLLOWUP_GAP_SECONDS / 3600}h, max ${LOOP_MAX_FOLLOWUPS} follow-ups.`);
