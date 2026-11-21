@@ -152,7 +152,7 @@ def main() -> int:
             return finish()
     # 1. Agent Card
     status, card = req("GET", api, "/.well-known/agent.json")
-    card_ok = status == 200 and (card.get("card") or {}).get("name") == "ReacheR"
+    card_ok = status == 200 and (card.get("name") == "ReacheR" or (card.get("card") or {}).get("name") == "ReacheR")  # v0.2.0 serves the card BARE (A2A v1.0); pre-1.0 servers wrapped it in {"card": ...}
     if not check("1. agent card — GET /.well-known/agent.json returns the ReacheR card",
                  card_ok, "" if card_ok else f"HTTP {status} {err_text(card)}"):
         if stop:
