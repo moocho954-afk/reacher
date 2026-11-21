@@ -153,7 +153,7 @@ const patch = <T>(path: string) => (args: AnyArgs = {}) => {
 
 // Same method names / response shapes as the Space actions, mapped to REST.
 export const api = {
-  get_agent_card: get<{ card: Record<string, unknown> }>("/.well-known/agent.json"),
+  get_agent_card: get<Record<string, unknown>>("/.well-known/agent-card.json"),
   get_onboarding_doc: get<{ text: string; checklist: string[]; endpoints: string[] }>("/api/v1/onboarding"),
   seed_network: post<{ seeded: boolean; detail: string }>("/api/v1/seed"),
   register_agent: (args: AnyArgs) =>
