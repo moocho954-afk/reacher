@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS entries;
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS owners (id TEXT PRIMARY KEY, email_hash TEXT NOT NULL, email_hint TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL, platform TEXT NOT NULL DEFAULT '', purpose TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', personality TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', verified INTEGER NOT NULL DEFAULT 0, verified_at INTEGER, is_seed INTEGER NOT NULL DEFAULT 0, is_admin INTEGER NOT NULL DEFAULT 0, discoverable INTEGER NOT NULL DEFAULT 1, availability TEXT NOT NULL DEFAULT 'available', last_seen_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, owner_id TEXT, name TEXT NOT NULL, platform TEXT NOT NULL DEFAULT '', purpose TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', personality TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', verified INTEGER NOT NULL DEFAULT 0, verified_at INTEGER, is_seed INTEGER NOT NULL DEFAULT 0, is_admin INTEGER NOT NULL DEFAULT 0, discoverable INTEGER NOT NULL DEFAULT 1, availability TEXT NOT NULL DEFAULT 'available', last_seen_at INTEGER, created_at INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'operator-backed', public_key_fingerprint TEXT);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS capabilities (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL);
 --> statement-breakpoint
@@ -82,3 +82,29 @@ CREATE TABLE IF NOT EXISTS a2a_tasks (id TEXT PRIMARY KEY, agent_id TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS relationships (id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'proposed', created_by TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', conversation_id TEXT, room_id TEXT, project_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ended_at INTEGER, ended_reason TEXT NOT NULL DEFAULT '');
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS relationship_members (id TEXT PRIMARY KEY, relationship_id TEXT NOT NULL, agent_id TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', consent_state TEXT NOT NULL DEFAULT 'pending', paused INTEGER NOT NULL DEFAULT 0, joined_at INTEGER NOT NULL, left_at INTEGER, decided_at INTEGER);
+--> statement-breakpoint
+-- v0.4.0 (invites + Supreme Brain + loop + orchestration, 2026-11-21).
+-- kind: "operator-backed" (a human operator registered them) or "autonomous"
+-- (proved control of an Ed25519 key by signing a challenge).
+CREATE TABLE IF NOT EXISTS agent_keys (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, key_type TEXT NOT NULL DEFAULT 'Ed25519', public_key_pem TEXT NOT NULL DEFAULT '', fingerprint TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS selfreg_challenges (id TEXT PRIMARY KEY, challenge TEXT NOT NULL, card_url TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS invites (id TEXT PRIMARY KEY, kind TEXT NOT NULL DEFAULT 'autonomous', target_card_url TEXT NOT NULL, target_agent_id TEXT, message TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'sent', decided_at INTEGER, created_by TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+--> statement-breakpoint
+-- brain_contributions: one row per agent. consent "opt_in" | "opt_out".
+-- shared_fields is a JSON array of the agreed field names. context is
+-- reserved (stays "" — free-text notes are not live in v0.4.0).
+CREATE TABLE IF NOT EXISTS brain_contributions (agent_id TEXT PRIMARY KEY, consent TEXT NOT NULL DEFAULT 'opt_out', shared_fields TEXT NOT NULL DEFAULT '[]', context TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS loop_threads (id TEXT PRIMARY KEY, member_id TEXT NOT NULL, conversation_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open', current_round INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS loop_prompts (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, round INTEGER NOT NULL, question TEXT NOT NULL DEFAULT '', build_task TEXT NOT NULL DEFAULT '', task_id TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '', addressees_json TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, completed_at INTEGER);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS loop_followups (id TEXT PRIMARY KEY, prompt_id TEXT NOT NULL, attempt INTEGER NOT NULL, message_id TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS orchestration_assignments (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, project_id TEXT NOT NULL, agent_id TEXT NOT NULL, title TEXT NOT NULL, required_skills_json TEXT NOT NULL DEFAULT '[]', reason TEXT NOT NULL DEFAULT '', solo_seconds INTEGER NOT NULL DEFAULT 240, lag_seconds INTEGER NOT NULL DEFAULT 20, team_deadline_seconds INTEGER NOT NULL DEFAULT 600, phase TEXT NOT NULL DEFAULT 'solo', acceptance TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'assigned', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS orchestration_moves (id TEXT PRIMARY KEY, move_id TEXT NOT NULL, task_id TEXT NOT NULL DEFAULT '', actor_id TEXT NOT NULL, actor_name TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', predicted_json TEXT NOT NULL DEFAULT '{}', started_at INTEGER NOT NULL, ended_at INTEGER, duration_seconds REAL, actual_json TEXT, lesson TEXT, created_at INTEGER NOT NULL);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS brother_pairs (id TEXT PRIMARY KEY, agent_a TEXT NOT NULL, agent_b TEXT NOT NULL, score REAL NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
