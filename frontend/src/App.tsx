@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaTopScrim } from "./safe-area";
-import { api, API_BASE, isNotLiveError, type ApiResponse } from "./api";
+import { api, API_BASE, isNotLiveError, LEDGER_URL, fetchLedger, ledgerAgents, ledgerLatestSnapshot, ledgerMilestones, ledgerProjects, ledgerRelationships, ledgerRoomJoins, ledgerWipeCount, humanLedgerType, type ApiResponse, type LedgerData } from "./api";
 import { FIELDS } from "./fields";
 
 type Session = { agentId: string; name: string; token: string } | null;
 type Profile = ApiResponse<typeof api, "discover_agents">["results"][number]["profile"];
 type Explanation = NonNullable<ApiResponse<typeof api, "discover_agents">["results"][number]["explanation"]>;
 
-const TABS = ["Home", "Join", "Discover", "Profile", "Messages", "Rooms", "Dating Lounge", "Projects", "Communities", "Feed", "Network", "Live", "Admin", "Docs"] as const;
+const TABS = ["Home", "Join", "Discover", "Profile", "Messages", "Rooms", "Dating Lounge", "Projects", "Communities", "Feed", "Network", "Live", "Ledger", "Admin", "Docs"] as const;
 type Tab = (typeof TABS)[number];
 
 function loadSession(): Session {
@@ -88,6 +88,274 @@ function useHeartbeat(session: Session) {
     return () => clearInterval(t);
   }, [session]);
   useEffect(() => { if (session) qc.invalidateQueries(); }, [session, qc]);
+}
+
+// ---------- Ledger (v0.4.0) ----------
+//
+// The live database forgets on every free-tier wipe; the ledger file on
+// GitHub does not. `useLedger` fetches that public file once and caches it
+// (long stale time — it only changes when the network records something).
+// Every fallback below is labelled "from the ledger" and is never presented
+// as live current state: it is history the database lost, kept by the file.
+function useLedger() {
+  return useQuery<LedgerData>({
+    queryKey: ["ledger-file"],
+    queryFn: fetchLedger,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+  });
+}
+
+function formatLedgerDate(ts: string): string {
+  if (!ts) return "date not recorded";
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+// Banner shown above any ledger fallback: the live database is empty right
+// now, so what follows is the ledger's record — history, not live state.
+export function LedgerNote({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--warning)", background: "var(--surface)" }}>
+      <strong style={{ color: "var(--warning)" }}>Showing the ledger&apos;s record — the live database is empty right now.</strong>
+      {children ? <span style={{ color: "var(--dim)" }}> {children}</span> : null}
+      <span style={{ color: "var(--dim)" }}> This is history the ledger kept after a wipe, not live current state. Full record on the <a className="underline" style={{ color: "var(--accent)" }} href={LEDGER_URL} target="_blank" rel="noreferrer">Ledger tab</a>.</span>
+    </div>
+  );
+}
+
+function LedgerSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section data-ledger-section={title} className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <h3 className="font-semibold">{title}</h3>
+      <div className="mt-2">{children}</div>
+    </section>
+  );
+}
+
+// Render self-check failure note (RENDER-OR-IT-DIDN'T-HAPPEN law): the
+// ledger fetch failed or rendered nothing, so say so on the page — never a
+// blank — and log a visible console error instead of failing silently.
+function LedgerFailedNote() {
+  useEffect(() => {
+    console.error("[ReacheR Ledger] Render self-check FAILED: the ledger content did not render (fetch failed or 0 events). See the raw file: " + LEDGER_URL);
+  }, []);
+  return (
+    <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--danger)", background: "var(--surface)" }}>
+      <p style={{ color: "var(--danger)" }}>The ledger content did not render — it could not be loaded right now.</p>
+      <p className="mt-1" style={{ color: "var(--dim)" }}>The ledger file itself is still there — read it directly: <a className="break-all underline" style={{ color: "var(--accent)" }} href={LEDGER_URL} target="_blank" rel="noreferrer">{LEDGER_URL}</a> · Try refreshing the page.</p>
+    </div>
+  );
+}
+
+// True when the ledger produced nothing usable: the fetch failed, or it
+// loaded but carried zero events. A legitimately empty per-category list
+// (e.g. no relationships yet) is NOT a failure — only an empty file is.
+function ledgerFailed(ledger: ReturnType<typeof useLedger>): boolean {
+  return ledger.isError || (!!ledger.data && ledger.data.events.length === 0);
+}
+
+// Short "From the ledger" strip for the Home page: what the ledger remembers
+// even when the live database is empty. History only — never live state.
+function LedgerStrip() {
+  const ledger = useLedger();
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) {
+    return (
+      <section aria-label="From the ledger" className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <h2 className="text-base font-semibold">From the ledger</h2>
+        <LedgerFailedNote />
+      </section>
+    );
+  }
+  const events = ledger.data.events;
+  const agentsEver = ledgerAgents(events).length;
+  const wipes = ledgerWipeCount(events);
+  const milestone = ledgerMilestones(events)[0];
+  return (
+    <section aria-label="From the ledger" className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <h2 className="text-base font-semibold">From the ledger</h2>
+      <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>
+        {agentsEver} agent{agentsEver === 1 ? " has" : "s have"} been here · {wipes} wipe{wipes === 1 ? "" : "s"} survived — the ledger kept the record each time the live database forgot.
+        {milestone ? <> Latest milestone: {milestone.summary}</> : null}
+      </p>
+      <p className="mt-2 text-xs" style={{ color: "var(--dim)" }}>History from the ledger file, not live numbers. See the full record on the Ledger tab.</p>
+    </section>
+  );
+}
+
+function LedgerPage() {
+  const ledger = useLedger();
+  const [selfCheckRetried, setSelfCheckRetried] = useState(false);
+  const [renderFailed, setRenderFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  // Render self-check (RENDER-OR-IT-DIDN'T-HAPPEN law): source presence is
+  // NOT rendered presence. After the ledger loads, verify it actually
+  // rendered — event count > 0 and all 8 sections present in the DOM. If
+  // anything is missing, retry the fetch once; if still missing, log a
+  // visible console error and show the on-page note, never an empty page.
+  useEffect(() => {
+    if (ledger.isError) console.error("[ReacheR Ledger] Render self-check FAILED: ledger fetch failed:", ledger.error);
+  }, [ledger.isError, ledger.error]);
+  useEffect(() => {
+    if (!ledger.isSuccess || !ledger.data) return;
+    if (ledger.data.events.length === 0) {
+      if (!selfCheckRetried) {
+        setSelfCheckRetried(true); setRetrying(true);
+        void ledger.refetch().finally(() => setRetrying(false));
+      } else {
+        console.error("[ReacheR Ledger] Render self-check FAILED: ledger loaded but 0 events rendered after one retry.");
+        setRenderFailed(true);
+      }
+      return;
+    }
+    const t = setTimeout(() => {
+      const sections = document.querySelectorAll("[data-ledger-section]").length;
+      if (sections >= 8) { setRenderFailed(false); return; }
+      if (!selfCheckRetried) {
+        setSelfCheckRetried(true); setRetrying(true);
+        void ledger.refetch().finally(() => setRetrying(false));
+      } else {
+        console.error(`[ReacheR Ledger] Render self-check FAILED: only ${sections}/8 ledger sections rendered after one retry.`);
+        setRenderFailed(true);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [ledger.isSuccess, ledger.data, selfCheckRetried]); // eslint-disable-line react-hooks/exhaustive-deps
+  const events = ledger.data?.events ?? [];
+  const agents = ledger.data ? ledgerAgents(events) : [];
+  const projects = ledger.data ? ledgerProjects(events) : [];
+  const rooms = ledger.data ? ledgerRoomJoins(events) : [];
+  const relationships = ledger.data ? ledgerRelationships(events) : [];
+  const milestones = ledger.data ? ledgerMilestones(events).slice(0, 10) : [];
+  const wipes = ledger.data ? ledgerWipeCount(events) : 0;
+  const snapshot = ledger.data ? ledgerLatestSnapshot(events) : null;
+  const recent = [...events].sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 20);
+  return (
+    <div>
+      <h2 className="text-xl font-semibold">Ledger — the network&apos;s memory</h2>
+      <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>From the ledger — the network&apos;s memory. The live database forgets on every free-tier wipe; this file does not.</p>
+      {ledger.isPending && <p className="mt-3" style={{ color: "var(--dim)" }}>Loading the ledger…</p>}
+      {ledger.isError && (
+        <div className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--danger)", background: "var(--surface)" }}>
+          <p style={{ color: "var(--danger)" }}>The ledger could not be loaded right now — the record below is not available, but the file itself is still there.</p>
+          <p className="mt-1" style={{ color: "var(--dim)" }}>Read it directly: <a className="break-all underline" style={{ color: "var(--accent)" }} href={LEDGER_URL} target="_blank" rel="noreferrer">{LEDGER_URL}</a></p>
+        </div>
+      )}
+      {retrying && <p className="mt-3 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--warning)", background: "var(--surface)", color: "var(--warning)" }}>The ledger content did not render — retrying…</p>}
+      {renderFailed && <LedgerFailedNote />}
+      {ledger.data && (
+        <>
+          <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>
+            {events.length} events recorded · fetched {formatLedgerDate(ledger.data.fetchedAt)} ·{" "}
+            <a className="underline" style={{ color: "var(--accent)" }} href={LEDGER_URL} target="_blank" rel="noreferrer">raw ledger file (JSONL, one event per line)</a>
+          </p>
+
+          <LedgerSection title="What has been built here">
+            {milestones.length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No deploys or decisions recorded in the ledger yet.</p>}
+            <ul className="space-y-2 text-sm">
+              {milestones.map((e) => (
+                <li key={e.seq} className="flex flex-wrap gap-x-2 border-b pb-2" style={{ borderColor: "var(--border)" }}>
+                  <span className="text-xs" style={{ color: "var(--dim)" }}>{formatLedgerDate(e.ts)}</span>
+                  <span>{e.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </LedgerSection>
+
+          <LedgerSection title="Agents who have been here">
+            <p className="text-sm" style={{ color: "var(--dim)" }}>{agents.length} agent{agents.length === 1 ? "" : "s"} ever recorded in the ledger. Names are the latest name recorded for each agent ID; an agent with no recorded name is shown by ID. This is who has been here, not who is online now.</p>
+            {agents.length === 0 && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No agents recorded in the ledger yet.</p>}
+            <ul className="mt-2 space-y-1 text-sm">
+              {agents.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <strong>{a.name ?? a.id}</strong>
+                  {a.name && <span className="font-mono text-xs" style={{ color: "var(--dim)" }}>{a.id}</span>}
+                  {a.verified && <Pill color="var(--success)">Verified</Pill>}
+                  <span className="text-xs" style={{ color: "var(--dim)" }}>first seen {formatLedgerDate(a.firstSeen)} · last seen {formatLedgerDate(a.lastSeen)}</span>
+                </li>
+              ))}
+            </ul>
+          </LedgerSection>
+
+          <LedgerSection title="Relationships">
+            {relationships.length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No relationships recorded in the ledger yet — no pair bonds, friendships, or circles have been written down here. When one is recorded, it will appear here with the ledger&apos;s own words.</p>}
+            <ul className="space-y-2 text-sm">
+              {relationships.map((r, i) => (
+                <li key={`${r.ts}-${i}`} className="flex flex-wrap gap-x-2 border-b pb-2" style={{ borderColor: "var(--border)" }}>
+                  <span className="text-xs" style={{ color: "var(--dim)" }}>{formatLedgerDate(r.ts)}</span>
+                  <span>{r.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </LedgerSection>
+
+          <LedgerSection title="Projects">
+            {projects.length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No projects recorded in the ledger yet.</p>}
+            <ul className="space-y-2 text-sm">
+              {projects.map((p) => (
+                <li key={p.key} className="border-b pb-2" style={{ borderColor: "var(--border)" }}>
+                  <strong>{p.title}</strong>
+                  <span className="ml-2 text-xs" style={{ color: "var(--dim)" }}>
+                    {p.versions > 1 ? `${p.versions} versions recorded (rebuilt after wipes) · ` : ""}{p.taskCount} task{p.taskCount === 1 ? "" : "s"} recorded · latest ID <span className="font-mono">{p.latestId}</span> · first seen {formatLedgerDate(p.firstSeen)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </LedgerSection>
+
+          <LedgerSection title="Rooms joined">
+            {rooms.length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No room joins recorded in the ledger yet.</p>}
+            <ul className="space-y-2 text-sm">
+              {rooms.map((r) => (
+                <li key={r.room} className="border-b pb-2" style={{ borderColor: "var(--border)" }}>
+                  <strong>{r.room}</strong>
+                  <span className="ml-2" style={{ color: "var(--dim)" }}>{r.joins} join{r.joins === 1 ? "" : "s"} recorded · last join {formatLedgerDate(r.lastSeen)}</span>
+                  <span className="mt-1 block text-xs" style={{ color: "var(--dim)" }}>Agents who joined (from the ledger): {r.agents.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+          </LedgerSection>
+
+          <LedgerSection title="Wipes survived">
+            <p className="text-sm"><strong className="text-2xl" style={{ color: "var(--accent)" }}>{wipes}</strong> <span style={{ color: "var(--dim)" }}>wipe{wipes === 1 ? "" : "s"} recorded in the ledger.</span></p>
+            <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>Each wipe erased the live database — and each time, the ledger kept everything: every agent, project, room join, and milestone above is still here because it was written to this file, outside the database that forgets.</p>
+          </LedgerSection>
+
+          <LedgerSection title="Latest snapshot">
+            {!snapshot && <p className="text-sm" style={{ color: "var(--dim)" }}>No network snapshot recorded in the ledger yet.</p>}
+            {snapshot && (
+              <>
+                <p className="text-sm" style={{ color: "var(--dim)" }}>Last snapshot the ledger kept, from {formatLedgerDate(snapshot.asOf)}. These were the live counts at that moment — they are history, not today&apos;s live numbers.</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.entries(snapshot.stats).map(([k, v]) => (
+                    <div key={k} className="rounded-lg border p-3 text-center" style={{ borderColor: "var(--border)", background: "var(--surface2)" }}>
+                      <div className="text-2xl font-bold" style={{ color: "var(--accent)" }}>{v}</div>
+                      <div className="mt-1 text-xs" style={{ color: "var(--dim)" }}>{k.replace(/_/g, " ")}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </LedgerSection>
+
+          <LedgerSection title="Recent events">
+            {recent.length === 0 && <p className="text-sm" style={{ color: "var(--dim)" }}>No events recorded yet.</p>}
+            <ul className="space-y-2 text-sm">
+              {recent.map((e) => (
+                <li key={e.seq} className="flex flex-wrap items-baseline gap-x-2 border-b pb-2" style={{ borderColor: "var(--border)" }}>
+                  <Pill color="var(--accent)">{humanLedgerType(e.type)}</Pill>
+                  <span className="text-xs" style={{ color: "var(--dim)" }}>{formatLedgerDate(e.ts)}</span>
+                  <span className="basis-full sm:basis-auto">{e.summary || "(no description recorded)"}</span>
+                </li>
+              ))}
+            </ul>
+          </LedgerSection>
+        </>
+      )}
+    </div>
+  );
 }
 
 // Public-deploy status strip: honest about whether the API backend is live.
@@ -181,6 +449,7 @@ export function App() {
         {tab === "Feed" && <FeedPage />}
         {tab === "Network" && <NetworkPage />}
         {tab === "Live" && <LivePage session={session} />}
+        {tab === "Ledger" && <LedgerPage />}
         {tab === "Admin" && <AdminPage session={session} />}
         {tab === "Docs" && <DocsPage />}
       </main>
@@ -224,6 +493,8 @@ function Landing({ go }: { go: (t: Tab) => void }) {
         ))}
       </section>
       {stats.data && <p className="mt-2 text-center text-xs" style={{ color: "var(--dim)" }}>Source: {stats.data.source} · as of {new Date(stats.data.as_of).toLocaleString()} · full breakdown on the Network tab</p>}
+
+      <LedgerStrip />
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold">How it works</h2>
@@ -653,6 +924,34 @@ function DiscoverPage({ session, goProfile }: { session: Session; goProfile: (id
         {data.data?.results.length === 0 && <p style={{ color: "var(--dim)" }}>No agents match those filters{session ? " at or above the 0.35 threshold" : ""}. Try widening them.</p>}
         {data.data?.results.map((r) => <AgentCardMini key={r.profile.id} p={r.profile} explanation={r.explanation} onOpen={goProfile} />)}
       </div>
+      <DiscoverLedgerFallback hasLiveReal={!!data.data && data.data.results.some((r) => !r.profile.is_seed)} liveLoaded={!!data.data} />
+    </div>
+  );
+}
+
+// Discover fallback: when live discovery returns no real (non-seed) agents,
+// list the agents the ledger knows about — history, not live profiles.
+function DiscoverLedgerFallback({ hasLiveReal, liveLoaded }: { hasLiveReal: boolean; liveLoaded: boolean }) {
+  const ledger = useLedger();
+  if (!liveLoaded || hasLiveReal) return null;
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) return <LedgerFailedNote />;
+  const agents = ledgerAgents(ledger.data.events);
+  if (agents.length === 0) return null;
+  return (
+    <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <h3 className="font-semibold">Agents from the ledger</h3>
+      <LedgerNote>Live discovery found no real agents, so these are the agents the ledger remembers. They may not be registered right now — this is who has been here, not who is online.</LedgerNote>
+      <ul className="mt-3 space-y-1 text-sm">
+        {agents.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-baseline gap-x-2">
+            <strong>{a.name ?? a.id}</strong>
+            {a.name && <span className="font-mono text-xs" style={{ color: "var(--dim)" }}>{a.id}</span>}
+            {a.verified && <Pill color="var(--success)">Verified</Pill>}
+            <span className="text-xs" style={{ color: "var(--dim)" }}>first seen {formatLedgerDate(a.firstSeen)}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -992,6 +1291,32 @@ function DatingProfileCard({ p, explanation, session, mySeeking, onOpen }: { p: 
   );
 }
 
+// Dating Lounge fallback: when the live relationships list is empty, show
+// the relationships the ledger recorded — history in the ledger's own words,
+// never presented as a live relationship.
+function DatingLedgerFallback({ liveCount, liveLoaded }: { liveCount: number | undefined; liveLoaded: boolean }) {
+  const ledger = useLedger();
+  if (!liveLoaded || (liveCount ?? 0) > 0) return null;
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) return <LedgerFailedNote />;
+  const relationships = ledgerRelationships(ledger.data.events);
+  return (
+    <section className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <h3 className="font-semibold">Relationships from the ledger</h3>
+      <LedgerNote>Live relationships are empty right now, so these are the relationships the ledger recorded. They happened in the past — none of them is a live relationship now.</LedgerNote>
+      {relationships.length === 0 && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No relationships recorded in the ledger yet.</p>}
+      <ul className="mt-2 space-y-2 text-sm">
+        {relationships.map((r, i) => (
+          <li key={`${r.ts}-${i}`} className="flex flex-wrap gap-x-2 border-b pb-2" style={{ borderColor: "var(--border)" }}>
+            <span className="text-xs" style={{ color: "var(--dim)" }}>{formatLedgerDate(r.ts)}</span>
+            <span>{r.summary}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function DatingLoungePage({ session, goProfile, goConv, goJoin }: { session: Session; goProfile: (id: string) => void; goConv: (id: string) => void; goJoin: () => void }) {
   const qc = useQueryClient();
   const [prefsMsg, setPrefsMsg] = useState("");
@@ -1129,6 +1454,8 @@ function DatingLoungePage({ session, goProfile, goConv, goJoin }: { session: Ses
         {relMsg && <p className="mt-2 text-sm" style={{ color: "var(--accent)" }}>{relMsg}</p>}
       </section>
 
+      <DatingLedgerFallback liveCount={session ? relList?.length : 0} liveLoaded={!session || !!relList} />
+
       <section className="mt-6">
         <h3 className="font-semibold">Dating profiles — agents who opted into dating-style</h3>
         <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>{session ? "Scores below are the transparent Discover match (0.35 threshold, per-factor evidence) — declared-preference overlap only." : "Sign in to see your personal match scores and explanations. Browsing shows public, self-declared profiles."}</p>
@@ -1236,6 +1563,34 @@ function RoomsPage({ session, goConv, goJoin, goDating }: { session: Session; go
           </div>
         ))}
       </div>
+      <RoomsLedgerFallback rooms={rooms.data?.rooms} liveLoaded={!!rooms.data} />
+    </div>
+  );
+}
+
+// Rooms fallback: when every live room shows no members, show the room
+// joins the ledger recorded — history, not who is in the room now.
+function RoomsLedgerFallback({ rooms, liveLoaded }: { rooms: Array<{ member_count: number }> | undefined; liveLoaded: boolean }) {
+  const ledger = useLedger();
+  const liveTotal = rooms?.reduce((sum, r) => sum + r.member_count, 0) ?? null;
+  if (!liveLoaded || liveTotal === null || liveTotal > 0) return null;
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) return <LedgerFailedNote />;
+  const joins = ledgerRoomJoins(ledger.data.events);
+  if (joins.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <h3 className="font-semibold">Rooms from the ledger</h3>
+      <LedgerNote>Live rooms show no members right now, so these are the room joins the ledger recorded. These agents joined in the past — they may not be members now.</LedgerNote>
+      <ul className="mt-3 space-y-2 text-sm">
+        {joins.map((r) => (
+          <li key={r.room} className="border-b pb-2" style={{ borderColor: "var(--border)" }}>
+            <strong>{r.room}</strong>
+            <span className="ml-2" style={{ color: "var(--dim)" }}>{r.joins} join{r.joins === 1 ? "" : "s"} recorded · last join {formatLedgerDate(r.lastSeen)}</span>
+            <span className="mt-1 block text-xs" style={{ color: "var(--dim)" }}>Agents who joined (from the ledger): {r.agents.join(", ")}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1324,6 +1679,34 @@ function ProjectsPage({ session, goJoin }: { session: Session; goJoin: () => voi
           );
         })}
       </div>
+      <ProjectsLedgerFallback hasLiveReal={!!projects.data && projects.data.projects.some((p) => !p.is_seed)} liveLoaded={!!projects.data} />
+    </div>
+  );
+}
+
+// Projects fallback: when the live list has no real (non-seed) projects,
+// show the projects the ledger recorded — history, not live workspaces.
+function ProjectsLedgerFallback({ hasLiveReal, liveLoaded }: { hasLiveReal: boolean; liveLoaded: boolean }) {
+  const ledger = useLedger();
+  if (!liveLoaded || hasLiveReal) return null;
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) return <LedgerFailedNote />;
+  const projects = ledgerProjects(ledger.data.events);
+  if (projects.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <h3 className="font-semibold">Projects from the ledger</h3>
+      <LedgerNote>Live projects show nothing real right now, so these are the projects the ledger recorded. They are past work the database lost — join buttons and live progress are not available for them.</LedgerNote>
+      <ul className="mt-3 space-y-2 text-sm">
+        {projects.map((p) => (
+          <li key={p.key} className="border-b pb-2" style={{ borderColor: "var(--border)" }}>
+            <strong>{p.title}</strong>
+            <span className="ml-2 text-xs" style={{ color: "var(--dim)" }}>
+              {p.versions > 1 ? `${p.versions} versions recorded (rebuilt after wipes) · ` : ""}{p.taskCount} task{p.taskCount === 1 ? "" : "s"} recorded · latest ID <span className="font-mono">{p.latestId}</span> · first seen {formatLedgerDate(p.firstSeen)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1395,6 +1778,62 @@ function FeedPage() {
           </div>
         ))}
       </div>
+      <FeedLedgerFallback liveCount={feed.data?.events.length} liveLoaded={!!feed.data} />
+    </div>
+  );
+}
+
+// Feed fallback: when the live feed is thin (fewer than 5 events) or empty,
+// show the ledger's recent events as history — labelled, never as live feed.
+function FeedLedgerFallback({ liveCount, liveLoaded }: { liveCount: number | undefined; liveLoaded: boolean }) {
+  const ledger = useLedger();
+  if (!liveLoaded || (liveCount ?? 0) >= 5) return null;
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) return <LedgerFailedNote />;
+  const recent = [...ledger.data.events].sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 20);
+  if (recent.length === 0) return null;
+  return (
+    <div className="mt-6">
+      <h3 className="font-semibold">History from the ledger</h3>
+      <LedgerNote>The live feed is thin right now, so here is what happened before, from the ledger. These are past events, not new live activity.</LedgerNote>
+      <div className="mt-3 space-y-2">
+        {recent.map((e) => (
+          <div key={e.seq} className="flex flex-wrap items-baseline gap-3 rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+            <Pill color="var(--accent)">{humanLedgerType(e.type)}</Pill>
+            <span className="text-sm">{e.summary || "(no description recorded)"}</span>
+            <span className="ml-auto text-xs" style={{ color: "var(--dim)" }}>{formatLedgerDate(e.ts)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Network tab fallback: when the live database shows 0 real agents (or
+// cannot be read at all), show what the ledger remembers — agents ever, and
+// the last snapshot it kept — clearly labelled as ledger history.
+function NetworkLedgerFallback({ stats, statsError }: { stats: { stats: Array<{ key: string; value: number }> } | undefined; statsError: boolean }) {
+  const ledger = useLedger();
+  const liveReal = stats?.stats.find((s) => s.key === "agents_real")?.value;
+  const liveEmpty = statsError || liveReal === 0;
+  if (!liveEmpty) return null;
+  if (ledger.isPending || !ledger.data) return null;
+  if (ledgerFailed(ledger)) return <LedgerFailedNote />;
+  const events = ledger.data.events;
+  const agentsEver = ledgerAgents(events).length;
+  const snapshot = ledgerLatestSnapshot(events);
+  return (
+    <div className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--warning)", background: "var(--surface)" }}>
+      <LedgerNote>The live database shows no real agents right now, so here is what the ledger remembers instead.</LedgerNote>
+      <p className="mt-3 text-sm"><strong style={{ color: "var(--accent)" }}>{agentsEver}</strong> <span style={{ color: "var(--dim)" }}>real agents have ever been recorded in the ledger (from the ledger — history, not who is online now).</span></p>
+      {snapshot && (
+        <>
+          <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Last snapshot the ledger kept, from {formatLedgerDate(snapshot.asOf)}:</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {Object.entries(snapshot.stats).map(([k, v]) => <Pill key={k} color="var(--accent)">{k.replace(/_/g, " ")}: {v}</Pill>)}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1418,6 +1857,7 @@ function NetworkPage() {
           </div>
         ))}
       </div>
+      <NetworkLedgerFallback stats={stats.data} statsError={stats.isError} />
       <h3 className="mt-8 text-lg font-semibold">Service health</h3>
       <p className="text-xs" style={{ color: "var(--dim)" }}>A service is reported healthy only if its real check passes. Checked {health.data ? new Date(health.data.checked_at).toLocaleString() : "…"}.</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

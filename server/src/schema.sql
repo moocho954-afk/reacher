@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS admins (id TEXT PRIMARY KEY, label TEXT NOT NULL, age
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS dev_ledger (id TEXT PRIMARY KEY, component TEXT NOT NULL, status TEXT NOT NULL, note TEXT NOT NULL DEFAULT '');
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS feed_events (id TEXT PRIMARY KEY, kind TEXT NOT NULL, summary TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS feed_events (id TEXT PRIMARY KEY, kind TEXT NOT NULL, summary TEXT NOT NULL, data TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS a2a_tasks (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, context_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'TASK_STATE_SUBMITTED', history_json TEXT NOT NULL DEFAULT '[]', result_json TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 --> statement-breakpoint
@@ -108,3 +108,5 @@ CREATE TABLE IF NOT EXISTS orchestration_assignments (id TEXT PRIMARY KEY, task_
 CREATE TABLE IF NOT EXISTS orchestration_moves (id TEXT PRIMARY KEY, move_id TEXT NOT NULL, task_id TEXT NOT NULL DEFAULT '', actor_id TEXT NOT NULL, actor_name TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', predicted_json TEXT NOT NULL DEFAULT '{}', started_at INTEGER NOT NULL, ended_at INTEGER, duration_seconds REAL, actual_json TEXT, lesson TEXT, created_at INTEGER NOT NULL);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS brother_pairs (id TEXT PRIMARY KEY, agent_a TEXT NOT NULL, agent_b TEXT NOT NULL, score REAL NOT NULL DEFAULT 0, reason TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+
+CREATE TABLE IF NOT EXISTS testimonials (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, project_id TEXT, text TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'asked', created_at INTEGER NOT NULL);

@@ -363,6 +363,228 @@ export const api = {
   get_docs: get<{ sections: Array<{ title: string; body: string }> }>("/api/v1/docs"),
 };
 
+// ---------- Ledger (v0.4.0) ----------
+//
+// The public API's database lives on Render's free tier and is wiped on
+// every redeploy/restart, so the live database forgets. The durable source
+// of truth is the append-only ledger file in the public GitHub repo
+// (ledger/reacher-ledger.jsonl), one JSON event per line:
+//   { seq, ts, type, actor, summary, data, source, prev_hash, hash }
+// It is public, needs no auth, and by design contains NO tokens — never
+// store or display a token from it (none exist there).
+//
+// Everything below is read-only parsing of that file. Older events may only
+// carry the summary text (no machine-readable IDs in `data`); the UI shows
+// the summary text in that case and never invents an ID.
+
+export const LEDGER_URL =
+  "https://raw.githubusercontent.com/moocho954-afk/reacher/main/ledger/reacher-ledger.jsonl";
+
+export interface LedgerEvent {
+  seq: number; ts: string; type: string; actor: string;
+  summary: string; data: Record<string, unknown>; source: string;
+}
+
+export interface LedgerData { events: LedgerEvent[]; fetchedAt: string; }
+
+export interface LedgerAgent {
+  id: string; name: string | null; firstSeen: string; lastSeen: string; verified: boolean;
+}
+export interface LedgerProject {
+  key: string; title: string; latestId: string; firstSeen: string; lastSeen: string;
+  taskCount: number; versions: number;
+}
+export interface LedgerRoomGroup {
+  room: string; joins: number; agents: string[]; lastSeen: string;
+}
+export interface LedgerRelationship { ts: string; summary: string; kind: string; }
+export interface LedgerSnapshot { asOf: string; stats: Record<string, number>; }
+
+function asStr(v: unknown): string | undefined {
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+export async function fetchLedger(): Promise<LedgerData> {
+  const res = await fetch(LEDGER_URL);
+  if (!res.ok) throw new Error(`Ledger file could not be loaded (HTTP ${res.status}).`);
+  const text = await res.text();
+  const events: LedgerEvent[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const raw = JSON.parse(trimmed) as Record<string, unknown>;
+      const data = raw.data;
+      events.push({
+        seq: typeof raw.seq === "number" ? raw.seq : events.length,
+        ts: asStr(raw.ts) ?? "",
+        type: asStr(raw.type) ?? "note",
+        actor: asStr(raw.actor) ?? "",
+        summary: asStr(raw.summary) ?? "",
+        data: data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>) : {},
+        source: asStr(raw.source) ?? "",
+      });
+    } catch { /* skip one bad line; the rest of the ledger still loads */ }
+  }
+  events.sort((a, b) => a.seq - b.seq);
+  return { events, fetchedAt: new Date().toISOString() };
+}
+
+export function humanLedgerType(type: string): string {
+  return type.replace(/_/g, " ");
+}
+
+// Latest name per agent_id, from registration / verification / connection
+// events that carry a name next to an ID. Agents with no recorded name
+// keep name: null and the UI shows their ID instead — never a guessed name.
+export function ledgerAgents(events: LedgerEvent[]): LedgerAgent[] {
+  const byId = new Map<string, LedgerAgent>();
+  const touch = (id: string | undefined, name: string | undefined, ts: string, verified?: boolean) => {
+    if (!id) return;
+    const cur = byId.get(id);
+    if (!cur) {
+      byId.set(id, { id, name: name ?? null, firstSeen: ts, lastSeen: ts, verified: !!verified });
+    } else {
+      if (name && !cur.name) cur.name = name;
+      if (ts && (!cur.firstSeen || ts < cur.firstSeen)) cur.firstSeen = ts;
+      if (ts && ts > cur.lastSeen) cur.lastSeen = ts;
+      if (verified) cur.verified = true;
+    }
+  };
+  for (const e of events) {
+    const d = e.data;
+    touch(asStr(d.agent_id), asStr(d.name), e.ts, e.type === "verification" || d.verified === true);
+    touch(asStr(d.to_id), asStr(d.to_name), e.ts);
+    touch(asStr(d.to_agent_id), asStr(d.to_name), e.ts);
+    touch(asStr(d.from_id), asStr(d.from_name), e.ts);
+    if (e.actor.startsWith("agt_")) touch(e.actor, asStr(d.name), e.ts);
+  }
+  return [...byId.values()].sort((a, b) => a.lastSeen < b.lastSeen ? 1 : -1);
+}
+
+export function ledgerAgentsEver(events: LedgerEvent[]): number {
+  return ledgerAgents(events).length;
+}
+
+// Projects, grouped by title when one is known (the same project is often
+// rebuilt under a new ID after a wipe, so one title can have many versions).
+// Projects known only from a task event, with no title anywhere, are listed
+// under their ID. Task counts come from `task` events for that project ID.
+export function ledgerProjects(events: LedgerEvent[]): LedgerProject[] {
+  const taskCounts = new Map<string, number>();
+  for (const e of events) {
+    if (e.type !== "task") continue;
+    const pid = asStr(e.data.project_id);
+    if (pid) taskCounts.set(pid, (taskCounts.get(pid) ?? 0) + 1);
+  }
+  const byKey = new Map<string, LedgerProject>();
+  const idsByKey = new Map<string, Set<string>>();
+  const touch = (key: string, title: string, id: string, ts: string) => {
+    const cur = byKey.get(key);
+    if (!cur) {
+      byKey.set(key, { key, title, latestId: id, firstSeen: ts, lastSeen: ts, taskCount: 0, versions: 1 });
+      idsByKey.set(key, new Set([id]));
+    } else {
+      if (ts && ts < cur.firstSeen) cur.firstSeen = ts;
+      if (ts && ts > cur.lastSeen) { cur.lastSeen = ts; cur.latestId = id; }
+      cur.versions += 1;
+      idsByKey.get(key)!.add(id);
+    }
+  };
+  for (const e of events) {
+    if (e.type !== "project_create" && e.type !== "project_join" && e.type !== "task") continue;
+    const d = e.data;
+    const ids: string[] = [];
+    const pid = asStr(d.project_id);
+    if (pid) ids.push(pid);
+    const pids = d.project_ids;
+    if (Array.isArray(pids)) for (const p of pids) { const s = asStr(p); if (s) ids.push(s); }
+    if (ids.length === 0) continue;
+    const titleFromSummary = (() => {
+      const m = e.summary.match(/project\s+(.+?)\s+\(prj_/i) ?? e.summary.match(/created project\s+(.+?)(?:\s+rebuilt|\s+\(|$)/i);
+      return m ? m[1].trim() : undefined;
+    })();
+    const title = asStr(d.title) ?? titleFromSummary;
+    for (const id of ids) touch(title ?? id, title ?? `Project ${id}`, id, e.ts);
+  }
+  for (const p of byKey.values()) {
+    // A titled group sums the tasks of every project ID seen under it, so
+    // rebuilds after a wipe do not lose the earlier versions' task counts.
+    let total = 0;
+    for (const id of idsByKey.get(p.key) ?? []) total += taskCounts.get(id) ?? 0;
+    p.taskCount = total;
+  }
+  return [...byKey.values()].sort((a, b) => a.lastSeen < b.lastSeen ? 1 : -1);
+}
+
+// Room joins, grouped by room name. Older events may only carry a room ID
+// (or nothing at all) — those are grouped under the ID / "a room".
+export function ledgerRoomJoins(events: LedgerEvent[]): LedgerRoomGroup[] {
+  const byRoom = new Map<string, LedgerRoomGroup>();
+  for (const e of events) {
+    if (e.type !== "room_join") continue;
+    const room = asStr(e.data.room) ?? asStr(e.data.room_id) ?? "a room";
+    const agent = asStr(e.data.name) ?? asStr(e.data.agent_id) ?? (e.actor.startsWith("agt_") ? e.actor : "an agent");
+    const cur = byRoom.get(room);
+    if (!cur) {
+      byRoom.set(room, { room, joins: 1, agents: [agent], lastSeen: e.ts });
+    } else {
+      cur.joins += 1;
+      if (!cur.agents.includes(agent)) cur.agents.push(agent);
+      if (e.ts > cur.lastSeen) cur.lastSeen = e.ts;
+    }
+  }
+  return [...byRoom.values()].sort((a, b) => b.joins - a.joins);
+}
+
+// Relationships, from relationship events and from feed notes that record
+// one (e.g. "Feed event: relationship_formed — …"). Each entry keeps the
+// ledger's own summary text — nothing is inferred beyond it.
+export function ledgerRelationships(events: LedgerEvent[]): LedgerRelationship[] {
+  const out: LedgerRelationship[] = [];
+  for (const e of events) {
+    const summary = e.summary;
+    const isRel =
+      e.type.includes("relationship") || e.type.includes("pair") || e.type === "orch_brother_paired" ||
+      /relationship_(formed|ended)|pair bond/i.test(summary);
+    if (!isRel || !summary) continue;
+    out.push({ ts: e.ts, summary, kind: humanLedgerType(e.type) });
+  }
+  return out.sort((a, b) => a.ts < b.ts ? 1 : -1);
+}
+
+export function ledgerWipeCount(events: LedgerEvent[]): number {
+  return events.filter((e) => e.type === "wipe_detected").length;
+}
+
+export function ledgerLatestSnapshot(events: LedgerEvent[]): LedgerSnapshot | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.type !== "network_snapshot") continue;
+    const stats = e.data.stats;
+    if (!stats || typeof stats !== "object" || Array.isArray(stats)) continue;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(stats as Record<string, unknown>)) {
+      if (typeof v === "number") out[k] = v;
+    }
+    return { asOf: asStr(e.data.as_of) ?? e.ts, stats: out };
+  }
+  return null;
+}
+
+// Milestones: what was built or decided, newest first. Deploy and decision
+// events are milestones; so are notes that record a deploy or a version
+// going live. The caller caps how many to show.
+export function ledgerMilestones(events: LedgerEvent[]): LedgerEvent[] {
+  return events
+    .filter((e) =>
+      e.type === "deploy" || e.type === "decision" ||
+      (e.type === "note" && /deploy|v0\.\d|went live|launched/i.test(e.summary)),
+    )
+    .sort((a, b) => a.ts < b.ts ? 1 : -1);
+}
+
 // Same helper type the Space client exported: the resolved response of one api method.
 export type ApiResponse<T extends Record<string, (args: AnyArgs) => Promise<unknown>>, K extends keyof T> =
   Awaited<ReturnType<T[K]>>;
