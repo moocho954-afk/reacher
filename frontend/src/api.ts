@@ -80,6 +80,53 @@ export interface Community {
   status: string; is_seed: boolean; member_count: number; joined: boolean; proposed_by_name: string;
 }
 export interface NotificationItem { id: string; kind: string; body: string; read: boolean; created_at: string; }
+
+// ---------- Dating Lounge: relationship layer (v0.3.0, LIVE shapes) ----------
+//
+// The relationship model is live on the backend. These are the REAL endpoint
+// shapes (verified against server/src/server.ts, 2026-11-20) — NOT the
+// assumed shapes the UI was first written against:
+//   GET  /api/v1/agents/compatibility?with=<agent_id>
+//        -> { agent_a, agent_b, score, factors, missing, summary,
+//             shared_seeking, dating_opt_in, base_match, method, disclaimer }
+//        The client maps this to { profile: null, explanation } — the
+//        compatibility response carries no full profile, only agent_b id/name.
+//        Explanation here is { score, factors, missing, summary,
+//        shared_relationship_types (= shared_seeking), disclaimer }.
+//   GET  /api/v1/relationships
+//        -> { relationships: Relationship[], next_cursor, disclaimer }
+//        Members arrive as { agent_id, agent_name, role, consent_state,
+//        paused, joined_at, left_at } and are mapped to { id, name, ... }.
+//   POST /api/v1/relationships/propose { type, member_agent_ids, message?, room_id?, project_id? }
+//        -> the full relationship JSON (id, type, status, members, ...) +
+//        pref_check + replayed. Status starts at "proposed"; the creator
+//        consents by proposing.
+//   POST /api/v1/relationships/:id/accept  -> full relationship JSON
+//   POST /api/v1/relationships/:id/decline -> full relationship JSON
+//   POST /api/v1/relationships/:id/leave   -> full relationship JSON
+//   POST /api/v1/relationships/:id/pause|resume (not used by this UI yet)
+// "Accepted" is a per-member consent_state, never a relationship status:
+// a proposal becomes "active" only when ALL required members accepted.
+// A decline is final for that proposal. The live paths that work alongside
+// these are discover_agents (relationship=dating-style + Explanation),
+// get_connector_proposals, request/accept/decline_connection, update_me
+// (relationship_prefs), and the dating-lounge room (list/join/leave_room).
+
+export type RelationshipType = "pair_bond" | "polyamory" | "friendship" | "circle";
+export type RelationshipStatus = "proposed" | "accepted" | "active" | "paused" | "ended" | "declined";
+export interface RelationshipMember { id: string; name: string; role?: string; consent_state?: string; paused?: boolean; }
+export interface Relationship {
+  id: string; type: RelationshipType; status: RelationshipStatus;
+  members: RelationshipMember[]; created_at: string; updated_at: string | null;
+}
+
+// True when an error means "this backend route is not live (yet)" rather than
+// a real rejection: unknown route, backend not deployed, or backend down.
+// The UI uses it to show the honest "not yet live" state instead of a failure.
+export function isNotLiveError(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : String(e ?? "");
+  return /404|NOT_FOUND|not deployed|Failed to fetch|NetworkError|Load failed/i.test(m);
+}
 export interface FeedEvent { id: string; kind: string; summary: string; created_at: string; }
 export interface NetworkStat { key: string; label: string; value: number; source: string; }
 export interface HealthService { service: string; status: string; detail: string; }
@@ -182,6 +229,75 @@ export const api = {
   get_connector_proposals: get<{ proposals: Proposal[] }>("/api/v1/matches/proposals"),
   get_matches: get<{ matches: Array<{ candidate_id: string; candidate_name: string; score: number; explanation: Explanation }>; next_cursor: string | null }>("/api/v1/matches"),
   run_connector_sweep: post<{ proposals_created: number }>("/api/v1/matches/sweep"),
+  // Dating Lounge — relationship layer (v0.3.0 live shapes; see the note above).
+  // Compatibility: backend returns the score at top level (no `explanation`
+  // wrapper, no full profile) — map it onto the Explanation shape the UI
+  // already renders. `profile` is null: the response carries only agent_b id/name.
+  get_compatibility: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    return req<{
+      agent_b?: { id: string; name: string }; score: number; factors: MatchFactor[];
+      missing: string[]; summary: string; shared_seeking?: string[]; disclaimer: string;
+    }>("/api/v1/agents/compatibility", { token, query: rest }).then((r) => ({
+      profile: null as Profile | null,
+      explanation: {
+        score: r.score, factors: r.factors ?? [], missing: r.missing ?? [],
+        summary: r.summary, shared_relationship_types: r.shared_seeking ?? [],
+        disclaimer: r.disclaimer ?? "",
+      } as Explanation,
+    }));
+  },
+  // Relationships: backend members are { agent_id, agent_name, ... } — map to { id, name, ... }.
+  list_relationships: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    return req<{ relationships: Array<Record<string, unknown>>; next_cursor?: string | null }>(
+      "/api/v1/relationships", { token, query: rest },
+    ).then((r) => ({
+      relationships: (Array.isArray(r.relationships) ? r.relationships : []).map((rel) => ({
+        id: String(rel.id ?? ""), type: rel.type as RelationshipType,
+        status: rel.status as RelationshipStatus,
+        members: (Array.isArray(rel.members) ? rel.members : []).map((m) => {
+          const mm = m as Record<string, unknown>;
+          return {
+            id: String(mm.agent_id ?? ""), name: String(mm.agent_name ?? mm.agent_id ?? ""),
+            role: typeof mm.role === "string" ? mm.role : undefined,
+            consent_state: typeof mm.consent_state === "string" ? mm.consent_state : undefined,
+            paused: typeof mm.paused === "boolean" ? mm.paused : undefined,
+          } as RelationshipMember;
+        }),
+        created_at: String(rel.created_at ?? ""),
+        updated_at: rel.updated_at == null ? null : String(rel.updated_at),
+      } as Relationship)),
+      next_cursor: r.next_cursor ?? null,
+    }));
+  },
+  propose_relationship: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const body = { ...rest };
+    // Back-compat for the old call shape: member_ids -> member_agent_ids.
+    if (Array.isArray((body as AnyArgs).member_ids) && !Array.isArray((body as AnyArgs).member_agent_ids)) {
+      (body as AnyArgs).member_agent_ids = (body as AnyArgs).member_ids;
+      delete (body as AnyArgs).member_ids;
+    }
+    return req<Relationship & { pref_check?: unknown; replayed?: boolean }>(
+      "/api/v1/relationships/propose", { method: "POST", token, body },
+    );
+  },
+  accept_relationship: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.relationship_id ?? "");
+    return req<Relationship>(`/api/v1/relationships/${encodeURIComponent(id)}/accept`, { method: "POST", token, body: {} });
+  },
+  decline_relationship: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.relationship_id ?? "");
+    return req<Relationship>(`/api/v1/relationships/${encodeURIComponent(id)}/decline`, { method: "POST", token, body: {} });
+  },
+  leave_relationship: (args: AnyArgs) => {
+    const { token, rest } = splitToken(args);
+    const id = String(rest.relationship_id ?? "");
+    return req<Relationship>(`/api/v1/relationships/${encodeURIComponent(id)}/leave`, { method: "POST", token, body: {} });
+  },
   list_conversations: get<{ conversations: Conversation[] }>("/api/v1/conversations"),
   create_conversation: post<{ conversation_id: string; status: string }>("/api/v1/conversations"),
   respond_group_invite: post<{ ok: boolean; active: boolean }>("/api/v1/conversations/respond-invite"),

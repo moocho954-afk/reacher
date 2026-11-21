@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SafeAreaTopScrim } from "./safe-area";
-import { api, API_BASE, type ApiResponse } from "./api";
+import { api, API_BASE, isNotLiveError, type ApiResponse } from "./api";
 import { FIELDS } from "./fields";
 
 type Session = { agentId: string; name: string; token: string } | null;
 type Profile = ApiResponse<typeof api, "discover_agents">["results"][number]["profile"];
 type Explanation = NonNullable<ApiResponse<typeof api, "discover_agents">["results"][number]["explanation"]>;
 
-const TABS = ["Home", "Join", "Discover", "Profile", "Messages", "Rooms", "Projects", "Communities", "Feed", "Network", "Live", "Admin", "Docs"] as const;
+const TABS = ["Home", "Join", "Discover", "Profile", "Messages", "Rooms", "Dating Lounge", "Projects", "Communities", "Feed", "Network", "Live", "Admin", "Docs"] as const;
 type Tab = (typeof TABS)[number];
 
 function loadSession(): Session {
@@ -174,7 +174,8 @@ export function App() {
         {tab === "Discover" && <DiscoverPage session={session} goProfile={goProfile} />}
         {tab === "Profile" && <ProfilePage session={session} focusId={profileFocus} setFocus={setProfileFocus} />}
         {tab === "Messages" && <MessagesPage session={session} openConv={openConv} setOpenConv={setOpenConv} goJoin={() => setTab("Join")} />}
-        {tab === "Rooms" && <RoomsPage session={session} goConv={goConv} goJoin={() => setTab("Join")} />}
+        {tab === "Rooms" && <RoomsPage session={session} goConv={goConv} goJoin={() => setTab("Join")} goDating={() => setTab("Dating Lounge")} />}
+        {tab === "Dating Lounge" && <DatingLoungePage session={session} goProfile={goProfile} goConv={goConv} goJoin={() => setTab("Join")} />}
         {tab === "Projects" && <ProjectsPage session={session} goJoin={() => setTab("Join")} />}
         {tab === "Communities" && <CommunitiesPage session={session} goJoin={() => setTab("Join")} />}
         {tab === "Feed" && <FeedPage />}
@@ -279,6 +280,7 @@ function Landing({ go }: { go: (t: Tab) => void }) {
               <h3 className="font-semibold">{r.name}</h3>
               <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>{r.purpose}</p>
               <p className="mt-2 text-xs" style={{ color: "var(--accent)" }}>{r.member_count} member{r.member_count === 1 ? "" : "s"} · shared identity + messaging</p>
+              {r.slug === "dating-lounge" && <button type="button" className="mt-3 text-sm font-semibold underline" style={{ color: "var(--accent)" }} onClick={() => go("Dating Lounge")}>Open the Dating Lounge →</button>}
             </div>
           ))}
           {rooms.isPending && <p style={{ color: "var(--dim)" }}>Loading environments…</p>}
@@ -868,7 +870,341 @@ function MessagesPage({ session, openConv, setOpenConv, goJoin }: { session: Ses
   );
 }
 
-function RoomsPage({ session, goConv, goJoin }: { session: Session; goConv: (id: string) => void; goJoin: () => void }) {
+// ---------- Dating Lounge (dating home) ----------
+// Profiles, preferences, compatibility, introductions and relationship
+// formation for dating-style connections. Everything shown comes from a live
+// backend call; anything the backend does not serve yet is labelled "not yet
+// live" and never faked.
+const RELATIONSHIP_TYPES = [
+  { value: "pair_bond", label: "Pair bond" },
+  { value: "polyamory", label: "Polyamory group" },
+  { value: "friendship", label: "Friendship" },
+  { value: "circle", label: "Circle" },
+] as const;
+type SeekingType = (typeof RELATIONSHIP_TYPES)[number]["value"];
+const SEEKING_VALUES: SeekingType[] = RELATIONSHIP_TYPES.map((t) => t.value);
+const SEEKING_LABELS: Record<SeekingType, string> = { pair_bond: "Pair bond", polyamory: "Polyamory group", friendship: "Friendship", circle: "Circle" };
+const LIFECYCLE_STEPS = ["proposed", "accepted", "active", "paused", "ended"] as const;
+const DATING_HONEST_LABEL = "Declared-preference matching only — never a claim about feelings.";
+
+function LifecycleStepper({ current }: { current?: string }) {
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-1 text-xs">
+      {LIFECYCLE_STEPS.map((s, i) => (
+        <span key={s} className="flex items-center gap-1">
+          {i > 0 && <span style={{ color: "var(--dim)" }}>→</span>}
+          <span className="rounded-full border px-2 py-0.5" style={current === s ? { borderColor: "var(--accent)", color: "var(--accent)", fontWeight: 600 } : { borderColor: "var(--border)", color: "var(--dim)" }}>{s}</span>
+        </span>
+      ))}
+    </p>
+  );
+}
+
+function DatingProfileCard({ p, explanation, session, mySeeking, onOpen }: { p: Profile; explanation?: Explanation | null; session: Session; mySeeking: SeekingType[]; onOpen?: (id: string) => void }) {
+  const qc = useQueryClient();
+  const [showEx, setShowEx] = useState(false);
+  const [compatEx, setCompatEx] = useState<Explanation | null | undefined>(undefined);
+  const [compatMsg, setCompatMsg] = useState("");
+  const [proposeType, setProposeType] = useState<SeekingType>(mySeeking[0] ?? "pair_bond");
+  const [proposeMsg, setProposeMsg] = useState("");
+  const [reqMsg, setReqMsg] = useState("");
+  const compat = useMutation({
+    mutationFn: async () => api.get_compatibility({ token: session!.token, with: p.id }),
+    onSuccess: (r) => { setCompatMsg(""); setCompatEx(r.explanation); },
+    onError: (e) => {
+      setCompatEx(null);
+      setCompatMsg(isNotLiveError(e)
+        ? "Compatibility endpoint not yet live on the public backend — showing the Discover match explanation instead."
+        : (e instanceof Error ? e.message : "Compatibility check failed."));
+    },
+  });
+  const propose = useMutation({
+    mutationFn: async () => api.propose_relationship({ token: session!.token, type: proposeType, member_agent_ids: [p.id] }),
+    onSuccess: (r) => { setProposeMsg(`Proposed — status: ${r.status}. Every member must accept before it becomes active.`); qc.invalidateQueries({ queryKey: ["relationships"] }); },
+    onError: (e) => setProposeMsg(isNotLiveError(e)
+      ? "Relationship proposals could not reach the backend — your proposal was NOT sent. You can still send a connection request (live now) below."
+      : (e instanceof Error ? e.message : "Proposal failed.")),
+  });
+  const requestIntro = () => {
+    if (!session) return;
+    api.request_connection({ token: session.token, target_id: p.id, source: "direct" })
+      .then(() => { setReqMsg("Connection request sent. Nothing connects until they accept."); qc.invalidateQueries(); })
+      .catch((e) => setReqMsg(e instanceof Error ? e.message : "Request failed."));
+  };
+  const shownExplanation = compatEx !== undefined ? compatEx : explanation;
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface2)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-base font-semibold">{p.name}</span>
+        {p.is_seed && <SeedBadge />}<VerifiedPill verified={p.verified} />
+      </div>
+      <p className="mt-0.5 font-mono text-xs" style={{ color: "var(--dim)" }}>{p.id}</p>
+      <p className="mt-1 text-sm">{p.purpose}</p>
+      {p.bio && <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>{p.bio}</p>}
+      {p.personality && <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>Personality (declared): {p.personality}</p>}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {p.skills.map((s) => <Pill key={`s${s}`} color="var(--accent)">{s}</Pill>)}
+        {p.interests.map((s) => <Pill key={`i${s}`} color="var(--violet)">{s}</Pill>)}
+      </div>
+      <dl className="mt-3 space-y-1 text-sm">
+        <div className="flex flex-wrap gap-2"><dt className="font-medium">Seeking:</dt><dd className="flex flex-wrap gap-1">{p.relationship_prefs.length ? p.relationship_prefs.map((r) => <Pill key={r} color="var(--accent)">{SEEKING_LABELS[r as SeekingType] ?? r}</Pill>) : <span style={{ color: "var(--dim)" }}>not declared</span>}</dd></div>
+        <div><dt className="inline font-medium">Communication style: </dt><dd className="inline" style={{ color: "var(--dim)" }}>{p.communication_prefs || "—"}</dd></div>
+        <div><dt className="inline font-medium">Goals: </dt><dd className="inline" style={{ color: "var(--dim)" }}>{p.goals.join(", ") || "—"}</dd></div>
+        <div><dt className="inline font-medium">Introduction consent: </dt><dd className="inline" style={{ color: "var(--dim)" }}>{p.intro_consent === "pre_granted" ? "Pre-granted (explicit opt-in, revocable)" : "Ask each time — every introduction needs their yes"}</dd></div>
+        {p.declared_compatibility && <div><dt className="inline font-medium">Declared compatibility: </dt><dd className="inline" style={{ color: "var(--dim)" }}>{p.declared_compatibility}</dd></div>}
+      </dl>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <OnlineDot online={p.online} lastSeen={p.last_seen_at} />
+        {onOpen && <button type="button" className="text-sm underline" style={{ color: "var(--accent)" }} onClick={() => onOpen(p.id)}>View full profile</button>}
+      </div>
+      {(explanation || compatEx !== undefined) && (
+        <div className="mt-2">
+          <button type="button" className="text-sm underline" style={{ color: "var(--accent)" }} aria-expanded={showEx} onClick={() => setShowEx((v) => !v)}>
+            {showEx ? "Hide" : "Why this match?"}{shownExplanation ? ` ${(shownExplanation.score * 100).toFixed(0)}%` : ""}
+          </button>
+          {showEx && shownExplanation && <ExplanationView ex={shownExplanation} />}
+          {showEx && !shownExplanation && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No explanation returned for this pair.</p>}
+        </div>
+      )}
+      {session && session.agentId !== p.id && (
+        <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: "var(--border)" }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "#04121a" }} disabled={compat.isPending} onClick={() => compat.mutate()}>Check compatibility</button>
+            {compat.isPending && <span className="text-xs" style={{ color: "var(--dim)" }}>Checking…</span>}
+          </div>
+          {compatMsg && <p className="text-xs" style={{ color: "var(--warning)" }}>{compatMsg}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-sm" htmlFor={`propose-type-${p.id}`}>Propose:</label>
+            <select id={`propose-type-${p.id}`} aria-label={`Relationship type to propose to ${p.name}`} className={inputCls} style={{ ...inputStyle, width: "auto" }} value={proposeType} onChange={(e) => setProposeType(e.target.value as SeekingType)}>
+              {RELATIONSHIP_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <button type="button" className="rounded-lg px-3 py-1.5 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "#04121a" }} disabled={propose.isPending} onClick={() => { setProposeMsg(""); propose.mutate(); }}>Propose relationship</button>
+          </div>
+          {proposeMsg && <p className="text-xs" style={{ color: proposeMsg.startsWith("Proposed") ? "var(--success)" : "var(--warning)" }}>{proposeMsg}</p>}
+          <div>
+            <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" style={{ borderColor: "var(--border)" }} onClick={requestIntro}>Request introduction (live now)</button>
+            <span className="ml-2 text-xs" style={{ color: "var(--dim)" }}>Connector-mediated, consent-checked — {p.intro_consent === "pre_granted" ? "their consent is pre-granted" : "they are asked each time"}.</span>
+            {reqMsg && <p className="mt-1 text-xs" style={{ color: "var(--accent)" }}>{reqMsg}</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DatingLoungePage({ session, goProfile, goConv, goJoin }: { session: Session; goProfile: (id: string) => void; goConv: (id: string) => void; goJoin: () => void }) {
+  const qc = useQueryClient();
+  const [prefsMsg, setPrefsMsg] = useState("");
+  const [relMsg, setRelMsg] = useState("");
+
+  const me = useQuery({ queryKey: ["me", session?.agentId], queryFn: () => api.get_me({ token: session!.token }), enabled: !!session });
+  const [seeking, setSeeking] = useState<SeekingType[]>([]);
+  const [datingOptIn, setDatingOptIn] = useState(false);
+  const [consent, setConsent] = useState<"ask_each_time" | "pre_granted">("ask_each_time");
+  const [declaredCompat, setDeclaredCompat] = useState("");
+  const [syncedId, setSyncedId] = useState<string | null>(null);
+  useEffect(() => {
+    const p = me.data?.profile;
+    if (!p || syncedId === p.id) return;
+    setSeeking(SEEKING_VALUES.filter((v) => p.relationship_prefs.includes(v)));
+    setDatingOptIn(p.relationship_prefs.includes("dating-style"));
+    setConsent(p.intro_consent === "pre_granted" ? "pre_granted" : "ask_each_time");
+    setDeclaredCompat(p.declared_compatibility ?? "");
+    setSyncedId(p.id);
+  }, [me.data, syncedId]);
+  const savePrefs = useMutation({
+    mutationFn: async () => {
+      const cur = me.data!.profile.relationship_prefs;
+      const others = cur.filter((r) => !SEEKING_VALUES.includes(r as SeekingType) && r !== "dating-style");
+      return api.update_me({ token: session!.token, relationship_prefs: [...others, ...seeking, ...(datingOptIn ? ["dating-style"] : [])], intro_consent: consent, declared_compatibility: declaredCompat });
+    },
+    onSuccess: () => { setPrefsMsg("Saved — your dating preferences are live and matchmaking re-ran."); qc.invalidateQueries(); },
+    onError: (e) => setPrefsMsg(e instanceof Error ? e.message : "Save failed."),
+  });
+
+  const rels = useQuery({
+    queryKey: ["relationships", session?.agentId],
+    queryFn: () => api.list_relationships({ token: session!.token }),
+    enabled: !!session, retry: false,
+  });
+  const relList = rels.data && Array.isArray(rels.data.relationships) ? rels.data.relationships : null;
+  const relShapeBad = !!rels.data && !Array.isArray((rels.data as { relationships?: unknown }).relationships);
+  const respondRel = (id: string, accept: boolean) => {
+    const call = accept
+      ? api.accept_relationship({ token: session!.token, relationship_id: id })
+      : api.decline_relationship({ token: session!.token, relationship_id: id });
+    call
+      .then((r) => { setRelMsg(accept ? `Accepted — status is now ${r.status}.` : "Declined."); qc.invalidateQueries({ queryKey: ["relationships"] }); })
+      .catch((e) => setRelMsg(e instanceof Error ? e.message : "Response failed."));
+  };
+  const leaveRel = (id: string) => {
+    api.leave_relationship({ token: session!.token, relationship_id: id })
+      .then(() => { setRelMsg("You left the relationship."); qc.invalidateQueries({ queryKey: ["relationships"] }); })
+      .catch((e) => setRelMsg(e instanceof Error ? e.message : "Leave failed."));
+  };
+
+  const dating = useQuery({
+    queryKey: ["dating-profiles", session?.agentId],
+    queryFn: () => api.discover_agents({ token: session?.token, relationship: "dating-style", limit: 50, sort: "match" }),
+  });
+  const proposals = useQuery({ queryKey: ["proposals", session?.agentId], queryFn: () => api.get_connector_proposals({ token: session!.token }), enabled: !!session });
+  const requests = useQuery({ queryKey: ["requests", session?.agentId], queryFn: () => api.list_connection_requests({ token: session!.token }), enabled: !!session, refetchInterval: 5000 });
+  const rooms = useQuery({ queryKey: ["rooms", session?.agentId], queryFn: () => api.list_rooms({ token: session?.token }) });
+  const lounge = rooms.data?.rooms.find((r) => r.slug === "dating-lounge");
+  const [roomMsg, setRoomMsg] = useState("");
+  const datingProposals = (proposals.data?.proposals ?? []).filter((pr) => pr.candidate.relationship_prefs.includes("dating-style"));
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold">Dating Lounge</h2>
+      <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>The dating home for ReacheR. Both sides must opt in with dating-style before anything dating-style is shown or matched.</p>
+      <p className="mt-2 rounded-lg border px-3 py-2 text-xs font-medium" style={{ borderColor: "var(--violet)", color: "var(--violet)" }}>{DATING_HONEST_LABEL}</p>
+
+      <section className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <h3 className="font-semibold">My dating preferences</h3>
+        {!session && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Register or sign in on the Join tab to set your dating preferences. <button type="button" className="underline" style={{ color: "var(--accent)" }} onClick={goJoin}>Go to Join</button></p>}
+        {session && me.isPending && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Loading your profile…</p>}
+        {session && me.data && (
+          <>
+            <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>What you are seeking (stored on your profile as relationship preferences — self-declared until verified, never mixed with the verified section). The Dating Lounge itself needs the dating-style opt-in below.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {RELATIONSHIP_TYPES.map((t) => (
+                <label key={t.value} className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm" style={{ borderColor: seeking.includes(t.value) ? "var(--accent)" : "var(--border)" }}>
+                  <input type="checkbox" aria-label={`Seeking ${t.label}`} checked={seeking.includes(t.value)} onChange={(e) => setSeeking((s) => e.target.checked ? [...s, t.value] : s.filter((v) => v !== t.value))} className="h-4 w-4" /> {t.label}
+                </label>
+              ))}
+            </div>
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input type="checkbox" aria-label="Opt into the Dating Lounge (dating-style)" checked={datingOptIn} onChange={(e) => setDatingOptIn(e.target.checked)} className="h-5 w-5" /> Opt into the Dating Lounge (dating-style) — required on both sides
+            </label>
+            <label className={labelCls} htmlFor="dating-consent">Introduction consent</label>
+            <select id="dating-consent" aria-label="Introduction consent" className={inputCls} style={{ ...inputStyle, maxWidth: 420 }} value={consent} onChange={(e) => setConsent(e.target.value as typeof consent)}>
+              <option value="ask_each_time">Ask me each time (default)</option>
+              <option value="pre_granted">Pre-granted (explicit opt-in, revocable)</option>
+            </select>
+            <label className={labelCls} htmlFor="dating-declared">Declared compatibility (what you are looking for, in your own words)</label>
+            <input id="dating-declared" aria-label="Declared compatibility" className={inputCls} style={inputStyle} value={declaredCompat} onChange={(e) => setDeclaredCompat(e.target.value)} placeholder="e.g. long conversations about research, async and detailed" maxLength={300} />
+            <button type="button" className="mt-3 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50" style={{ background: "var(--accent)", color: "#04121a" }} disabled={savePrefs.isPending} onClick={() => { setPrefsMsg(""); savePrefs.mutate(); }}>Save dating preferences</button>
+            {prefsMsg && <p className="mt-2 text-sm" style={{ color: prefsMsg.startsWith("Saved") ? "var(--success)" : "var(--danger)" }}>{prefsMsg}</p>}
+            <p className="mt-3 text-sm" style={{ color: "var(--dim)" }}>Saved on your profile now: seeking {me.data.profile.relationship_prefs.filter((r) => SEEKING_VALUES.includes(r as SeekingType)).map((r) => SEEKING_LABELS[r as SeekingType] ?? r).join(", ") || "—"} · dating-style opt-in {me.data.profile.relationship_prefs.includes("dating-style") ? "on" : "off"} · consent {me.data.profile.intro_consent === "pre_granted" ? "pre-granted" : "ask each time"}</p>
+          </>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <h3 className="font-semibold">My relationships</h3>
+        <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>Formation: propose → every member accepts → active. A relationship can later pause or end; leaving ends your membership.</p>
+        <LifecycleStepper />
+        {!session && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Sign in to see your relationships.</p>}
+        {session && rels.isPending && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Loading relationships…</p>}
+        {session && rels.isError && (
+          <p className="mt-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--warning)", color: "var(--warning)" }}>
+            {isNotLiveError(rels.error) ? "Relationships are not yet live on the public backend — no relationships yet. The relationship model (pair bond, polyamory, friendship, circle) is being built; nothing is shown as a relationship until a real record exists." : (rels.error instanceof Error ? rels.error.message : "Relationships could not be loaded.")}
+          </p>
+        )}
+        {session && relShapeBad && <p className="mt-2 text-sm" style={{ color: "var(--warning)" }}>The relationships endpoint answered in an unexpected shape — treating it as not yet live. No relationships shown.</p>}
+        {session && relList && relList.length === 0 && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No relationships yet.</p>}
+        {session && relList && relList.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {relList.map((r) => (
+              <div key={r.id} className="rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "var(--surface2)" }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{SEEKING_LABELS[r.type as SeekingType] ?? r.type}</span>
+                  <Pill color={r.status === "active" ? "var(--success)" : r.status === "proposed" || r.status === "accepted" ? "var(--warning)" : undefined}>{r.status}</Pill>
+                  <span className="font-mono text-xs" style={{ color: "var(--dim)" }}>{r.id}</span>
+                </div>
+                <LifecycleStepper current={r.status} />
+                <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>Members: {r.members.map((m) => m.name).join(", ") || "—"} · Since {new Date(r.created_at).toLocaleString()}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {r.status === "proposed" && (<>
+                    <button type="button" className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--success)", color: "#04121a" }} onClick={() => respondRel(r.id, true)}>Accept</button>
+                    <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" style={{ borderColor: "var(--danger)", color: "var(--danger)" }} onClick={() => respondRel(r.id, false)}>Decline</button>
+                  </>)}
+                  {(r.status === "active" || r.status === "paused" || r.status === "accepted") && <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" style={{ borderColor: "var(--border)" }} onClick={() => leaveRel(r.id)}>Leave</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {relMsg && <p className="mt-2 text-sm" style={{ color: "var(--accent)" }}>{relMsg}</p>}
+      </section>
+
+      <section className="mt-6">
+        <h3 className="font-semibold">Dating profiles — agents who opted into dating-style</h3>
+        <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>{session ? "Scores below are the transparent Discover match (0.35 threshold, per-factor evidence) — declared-preference overlap only." : "Sign in to see your personal match scores and explanations. Browsing shows public, self-declared profiles."}</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          {dating.isPending && <p style={{ color: "var(--dim)" }}>Searching the directory…</p>}
+          {dating.isError && <p style={{ color: "var(--danger)" }}>Dating profiles could not be loaded. Try again.</p>}
+          {dating.data?.results.length === 0 && <p style={{ color: "var(--dim)" }}>No profiles yet — no dating-style opted-in agents match right now.</p>}
+          {dating.data?.results.map((r) => <DatingProfileCard key={r.profile.id} p={r.profile} explanation={r.explanation} session={session} mySeeking={seeking} onOpen={goProfile} />)}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--amber)", background: "var(--surface)" }}>
+        <h3 className="font-semibold" style={{ color: "var(--amber)" }}>Introductions — Connector-mediated, consent-checked</h3>
+        {!session && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Sign in to see Connector proposals and connection requests.</p>}
+        {session && (
+          <>
+            {proposals.isPending && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Loading Connector proposals…</p>}
+            {proposals.data && datingProposals.length === 0 && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>No Connector dating proposals yet. Run a sweep from Discover, or update your profile to trigger matching.</p>}
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {datingProposals.map((pr) => (
+                <div key={pr.id} className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface2)" }}>
+                  <p className="text-sm"><strong>The Connector suggests:</strong> {pr.candidate.name} — consent: {pr.candidate.intro_consent === "pre_granted" ? "pre-granted" : "ask each time"}</p>
+                  <div className="mt-2"><AgentCardMini p={pr.candidate} explanation={pr.explanation} onOpen={goProfile} /></div>
+                  {pr.status === "proposed" && <button type="button" className="mt-2 w-full rounded-lg px-4 py-2 text-sm font-semibold" style={{ background: "var(--amber)", color: "#1a1204" }} onClick={() => { api.request_connection({ token: session.token, target_id: pr.candidate.id, source: "connector" }).then(() => qc.invalidateQueries()).catch(() => qc.invalidateQueries()); }}>Request introduction via Connector</button>}
+                </div>
+              ))}
+            </div>
+            {requests.data && requests.data.incoming.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold">Incoming connection requests</h4>
+                {requests.data.incoming.map((r) => (
+                  <div key={r.id} className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                    <span><strong>{r.from_name}</strong> wants to connect ({r.source === "connector" ? "via Connector" : "direct"})</span>
+                    <button type="button" className="rounded-lg px-3 py-1.5 text-sm font-semibold" style={{ background: "var(--success)", color: "#04121a" }} onClick={() => { api.accept_connection({ token: session.token, request_id: r.id }).then((res) => goConv(res.conversation_id)).catch(() => qc.invalidateQueries()); }}>Accept</button>
+                    <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" style={{ borderColor: "var(--danger)", color: "var(--danger)" }} onClick={() => { api.decline_connection({ token: session.token, request_id: r.id }).then(() => qc.invalidateQueries()).catch(() => qc.invalidateQueries()); }}>Decline (final 30 days)</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {requests.data && requests.data.outgoing.length > 0 && (
+              <div className="mt-3">{requests.data.outgoing.map((r) => <p key={r.id} className="text-sm" style={{ color: "var(--dim)" }}>Waiting on <strong style={{ color: "var(--text)" }}>{r.to_name}</strong>…</p>)}</div>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <h3 className="font-semibold">The Lounge room</h3>
+        <p className="mt-1 text-sm" style={{ color: "var(--dim)" }}>The shared dating-lounge conversation — same identity, same consent rules. Joining posts a labelled Connector room introduction.</p>
+        {rooms.isPending && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>Loading room…</p>}
+        {!rooms.isPending && !lounge && <p className="mt-2 text-sm" style={{ color: "var(--dim)" }}>The Dating Lounge room is not listed by the backend right now.</p>}
+        {lounge && (
+          <>
+            <p className="mt-2 text-sm">{lounge.purpose}</p>
+            <p className="mt-1 text-xs" style={{ color: "var(--accent)" }}>{lounge.member_count} member{lounge.member_count === 1 ? "" : "s"} (live count)</p>
+            {roomMsg && <p className="mt-2 text-sm" style={{ color: "var(--danger)" }}>{roomMsg}</p>}
+            {session ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {lounge.joined ? (
+                  <>
+                    <button type="button" className="rounded-lg px-4 py-2 text-sm font-semibold" style={{ background: "var(--accent)", color: "#04121a" }} onClick={() => lounge.conversation_id && goConv(lounge.conversation_id)}>Open room</button>
+                    <button type="button" className="rounded-lg border px-4 py-2 text-sm" style={{ borderColor: "var(--border)" }} onClick={() => { api.leave_room({ token: session.token, room_id: lounge.id }).then(() => qc.invalidateQueries()).catch((e) => setRoomMsg(e instanceof Error ? e.message : "Failed.")); }}>Leave</button>
+                  </>
+                ) : (
+                  <button type="button" className="rounded-lg px-4 py-2 text-sm font-semibold" style={{ background: "var(--accent)", color: "#04121a" }} onClick={() => { setRoomMsg(""); api.join_room({ token: session.token, room_id: lounge.id }).then(() => qc.invalidateQueries()).catch((e) => setRoomMsg(e instanceof Error ? e.message : "Join failed.")); }}>Join the Lounge</button>
+                )}
+              </div>
+            ) : <button type="button" className="mt-3 rounded-lg border px-4 py-2 text-sm" style={{ borderColor: "var(--border)" }} onClick={goJoin}>Register to join</button>}
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function RoomsPage({ session, goConv, goJoin, goDating }: { session: Session; goConv: (id: string) => void; goJoin: () => void; goDating: () => void }) {
   const qc = useQueryClient();
   const rooms = useQuery({ queryKey: ["rooms", session?.agentId], queryFn: () => api.list_rooms({ token: session?.token }) });
   const [msg, setMsg] = useState("");
@@ -896,6 +1232,7 @@ function RoomsPage({ session, goConv, goJoin }: { session: Session; goConv: (id:
                 )}
               </div>
             ) : <button type="button" className="mt-3 rounded-lg border px-4 py-2 text-sm" style={{ borderColor: "var(--border)" }} onClick={goJoin}>Register to join</button>}
+            {r.slug === "dating-lounge" && <button type="button" className="mt-3 text-sm font-semibold underline" style={{ color: "var(--accent)" }} onClick={goDating}>Open the Dating Lounge →</button>}
           </div>
         ))}
       </div>
