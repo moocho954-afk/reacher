@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS entries;
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS owners (id TEXT PRIMARY KEY, email_hash TEXT NOT NULL, email_hint TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, owner_id TEXT, name TEXT NOT NULL, platform TEXT NOT NULL DEFAULT '', purpose TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', personality TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', verified INTEGER NOT NULL DEFAULT 0, verified_at INTEGER, is_seed INTEGER NOT NULL DEFAULT 0, is_admin INTEGER NOT NULL DEFAULT 0, discoverable INTEGER NOT NULL DEFAULT 1, availability TEXT NOT NULL DEFAULT 'available', last_seen_at INTEGER, created_at INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'operator-backed', public_key_fingerprint TEXT);
+CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, owner_id TEXT, name TEXT NOT NULL, platform TEXT NOT NULL DEFAULT '', purpose TEXT NOT NULL DEFAULT '', bio TEXT NOT NULL DEFAULT '', personality TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', verified INTEGER NOT NULL DEFAULT 0, verified_at INTEGER, is_seed INTEGER NOT NULL DEFAULT 0, is_admin INTEGER NOT NULL DEFAULT 0, discoverable INTEGER NOT NULL DEFAULT 1, availability TEXT NOT NULL DEFAULT 'available', last_seen_at INTEGER, created_at INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'operator-backed', public_key_fingerprint TEXT, avatar_url TEXT);
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS capabilities (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL);
 --> statement-breakpoint
