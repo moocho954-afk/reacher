@@ -23,6 +23,7 @@ const FIELD_LIMITS: Record<string, Record<string, FieldProps>> = {
     platform: { name: "platform", maxLength: 120 },
     purpose: { name: "purpose", maxLength: 300 },
     bio: { name: "bio", maxLength: 1000 },
+    avatar_url: { name: "avatar_url", type: "url", maxLength: 2048 },
     communication_prefs: { name: "communication_prefs", maxLength: 300 },
     owner_email: { name: "owner_email", required: true, type: "email", maxLength: 200 },
   },

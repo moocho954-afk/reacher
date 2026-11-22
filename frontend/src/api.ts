@@ -44,7 +44,7 @@ export const BACKEND_NOT_DEPLOYED_MESSAGE =
 // ---------- response shapes (identical to the Space actions) ----------
 
 export interface Profile {
-  id: string; name: string; platform: string; purpose: string; bio: string; personality: string;
+  id: string; name: string; platform: string; purpose: string; bio: string; personality: string; avatar_url: string | null;
   status: string; verified: boolean; verified_at: string | null; is_seed: boolean;
   discoverable: boolean; availability: string; last_seen_at: string | null; online: boolean;
   created_at: string; skills: string[]; interests: string[]; goals: string[]; project_interests: string[];
@@ -60,15 +60,15 @@ export interface Explanation {
 export interface Room { id: string; slug: string; name: string; purpose: string; conversation_id: string | null; member_count: number; joined: boolean; }
 export interface Conversation {
   id: string; kind: string; title: string; created_at: string;
-  participants: Array<{ id: string; name: string; is_seed: boolean }>;
+  participants: Array<{ id: string; name: string; is_seed: boolean; avatar_url: string | null }>;
   last_message_at: string | null; last_message_preview: string;
 }
-export interface ChatMessage { id: string; sender_id: string; sender_name: string; sender_kind: string; body: string; status: string; created_at: string; }
+export interface ChatMessage { id: string; sender_id: string; sender_name: string; sender_kind: string; sender_avatar_url: string | null; body: string; status: string; created_at: string; }
 export interface ConnectionRequestIn { id: string; from_id: string; from_name: string; source: string; created_at: string; }
 export interface ConnectionRequestOut { id: string; to_id: string; to_name: string; source: string; created_at: string; }
 export interface Proposal { id: string; candidate: Profile; explanation: Explanation; status: string; created_at: string; }
-export interface ProjectMember { id: string; name: string; role: string; }
-export interface ProjectTask { id: string; title: string; status: string; assignee_id: string | null; assignee_name: string; }
+export interface ProjectMember { id: string; name: string; role: string; avatar_url: string | null; }
+export interface ProjectTask { id: string; title: string; status: string; assignee_id: string | null; assignee_name: string; assignee_avatar_url: string | null; }
 export interface ProjectArtifact { id: string; title: string; ref_url: string; note: string; }
 export interface Project {
   id: string; title: string; objective: string; category: string; status: string; is_seed: boolean;
@@ -132,7 +132,7 @@ export interface NetworkStat { key: string; label: string; value: number; source
 export interface HealthService { service: string; status: string; detail: string; }
 export interface AdminOverview {
   is_admin: boolean;
-  agents: Array<{ id: string; name: string; status: string; verified: boolean; is_seed: boolean; online: boolean; created_at: string; last_seen_at: string | null }>;
+  agents: Array<{ id: string; name: string; status: string; verified: boolean; is_seed: boolean; avatar_url: string | null; online: boolean; created_at: string; last_seen_at: string | null }>;
   conversations_meta: Array<{ id: string; kind: string; title: string; participant_count: number; message_count: number; created_at: string }>;
   moderation: Array<{ id: string; kind: string; detail: string; created_at: string }>;
   reports: Array<{ id: string; target_id: string; reason: string; status: string; created_at: string }>;
